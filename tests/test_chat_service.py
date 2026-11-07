@@ -181,22 +181,40 @@ def test_history_compaction_and_token_budget(monkeypatch, tmp_path) -> None:
         # Verify max_tokens for casual conversation is 180
         assert captured_max_tokens[0] == 180
 
-        # Now test pure greeting: starts fresh without old search baggage
+        # Now test that within active session, context is preserved even if user says a casual greeting
         captured_messages.clear()
         captured_max_tokens.clear()
-        result_greeting = _asyncio_run(
+        result_active = _asyncio_run(
             service.process_inbound(
                 sender_id="123456789",
                 external_message_id="tg:1003",
-                text="hello",
+                text="hello again",
                 request_id="req5",
             )
         )
-        assert result_greeting["sent"] is True
-        # Greeting should have only the fresh user turn
+        assert result_active["sent"] is True
+        # Within the active session, conversation continuity is maintained
+        assert len(captured_messages) > 1
+        assert captured_messages[-1]["content"] == "hello again"
+
+        # Now test timing-based session isolation: 45 minutes later (> 30m session timeout)
+        captured_messages.clear()
+        captured_max_tokens.clear()
+        from datetime import datetime, timezone, timedelta
+        future_time = (datetime.now(timezone.utc) + timedelta(minutes=45)).isoformat()
+        result_timeout = _asyncio_run(
+            service.process_inbound(
+                sender_id="123456789",
+                external_message_id="tg:1004",
+                text="what is quantum computing?",
+                timestamp=future_time,
+                request_id="req6",
+            )
+        )
+        assert result_timeout["sent"] is True
+        # After idle timeout, old session history is discarded; fresh turn starts
         assert len(captured_messages) == 1
-        assert captured_messages[0]["content"] == "hello"
-        assert captured_max_tokens[0] == 180
+        assert captured_messages[0]["content"] == "what is quantum computing?"
     finally:
         cfg_module.config.database_url = orig_db
         cfg_module.config.telegram_allowed_user_ids = orig_allowed_raw

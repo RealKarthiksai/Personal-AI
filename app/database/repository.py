@@ -6,6 +6,7 @@ webhook delivery is guarded by a unique constraint on external_message_id.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from app.database.database import transaction
@@ -41,6 +42,28 @@ def message_exists(external_message_id: str) -> bool:
         return row is not None
 
 
+def parse_db_timestamp(ts: Optional[str]) -> Optional[datetime]:
+    """Parse a database timestamp (SQLite format or ISO-8601) into UTC datetime."""
+    if not ts:
+        return None
+    s = ts.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+    return None
+
+
 def create_message(
     *,
     external_message_id: Optional[str],
@@ -49,17 +72,28 @@ def create_message(
     text: str,
     timestamp: Optional[str] = None,
     status: str = "received",
+    created_at: Optional[str] = None,
 ) -> int:
     """Insert a message row and return its new id."""
     with transaction() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO messages
-                (external_message_id, sender_id, direction, text, timestamp, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (external_message_id, sender_id, direction, text, timestamp, status),
-        )
+        if created_at is not None:
+            cur = conn.execute(
+                """
+                INSERT INTO messages
+                    (external_message_id, sender_id, direction, text, timestamp, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (external_message_id, sender_id, direction, text, timestamp, status, created_at),
+            )
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO messages
+                    (external_message_id, sender_id, direction, text, timestamp, status)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (external_message_id, sender_id, direction, text, timestamp, status),
+            )
         return int(cur.lastrowid)
 
 
@@ -85,6 +119,87 @@ def get_recent_history(sender_id: str, limit: int) -> List[dict]:
             "created_at": row["created_at"],
         }
         for row in reversed(rows)
+    ]
+
+
+def get_active_session_history(
+    sender_id: str,
+    limit: int = 6,
+    timeout_seconds: int = 1800,
+    reference_time: Optional[datetime] = None,
+    exclude_external_id: Optional[str] = None,
+) -> List[dict]:
+    """Retrieve conversation messages for the current active session.
+
+    A session is active if the time between consecutive messages is <= timeout_seconds.
+    If the time elapsed between reference_time (default: current UTC time) and the
+    most recent message exceeds timeout_seconds, the previous session has expired
+    and an empty list is returned.
+
+    If the latest message is within timeout_seconds, messages in the continuous active
+    session are returned in chronological order (oldest first), up to `limit` entries.
+    """
+    if reference_time is None:
+        reference_time = datetime.now(timezone.utc)
+    elif reference_time.tzinfo is None:
+        reference_time = reference_time.replace(tzinfo=timezone.utc)
+
+    with transaction() as conn:
+        rows = conn.execute(
+            """
+            SELECT external_message_id, direction, text, timestamp, created_at
+            FROM messages
+            WHERE sender_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (sender_id, max(limit + 20, 50)),
+        ).fetchall()
+
+    filtered_rows = [
+        row
+        for row in rows
+        if not (exclude_external_id and row["external_message_id"] == exclude_external_id)
+    ]
+
+    if not filtered_rows:
+        return []
+
+    # Check newest message elapsed time relative to reference_time
+    newest_row = filtered_rows[0]
+    newest_time = parse_db_timestamp(newest_row["created_at"])
+
+    if newest_time is not None:
+        elapsed = (reference_time - newest_time).total_seconds()
+        # If the gap between reference_time and the last recorded message exceeds timeout, session expired
+        if elapsed > timeout_seconds:
+            return []
+
+    # Collect consecutive messages within the active session window
+    active_rows = [newest_row]
+    prev_time = newest_time
+
+    for row in filtered_rows[1:]:
+        row_time = parse_db_timestamp(row["created_at"])
+        if row_time is not None and prev_time is not None:
+            gap = (prev_time - row_time).total_seconds()
+            if gap > timeout_seconds:
+                # An idle gap indicates the prior session ended before this point
+                break
+            prev_time = row_time
+        active_rows.append(row)
+        if len(active_rows) >= limit:
+            break
+
+    # Reverse so oldest comes first (natural chronological order)
+    return [
+        {
+            "direction": row["direction"],
+            "text": row["text"],
+            "timestamp": row["timestamp"],
+            "created_at": row["created_at"],
+        }
+        for row in reversed(active_rows)
     ]
 
 

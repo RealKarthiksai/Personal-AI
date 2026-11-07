@@ -21,6 +21,8 @@ class Config:
         self.database_url = s.database_url
         self.max_history_messages = s.max_history_messages
         self.request_timeout_seconds = s.request_timeout_seconds
+        self.session_timeout_minutes = s.session_timeout_minutes
+        self.session_timeout_seconds = s.session_timeout_seconds
 
         # Local LLM (llama.cpp OpenAI-compatible API)
         self.llm_base_url = s.llm_base_url.rstrip("/") if s.llm_base_url else ""

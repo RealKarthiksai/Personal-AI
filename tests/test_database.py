@@ -121,3 +121,108 @@ def test_history_limit() -> None:
             cfg_module.config.database_url = orig
     finally:
         os.unlink(path)
+
+
+def test_parse_db_timestamp() -> None:
+    from datetime import datetime, timezone
+    from app.database.repository import parse_db_timestamp
+
+    assert parse_db_timestamp(None) is None
+    assert parse_db_timestamp("") is None
+    assert parse_db_timestamp("invalid-date") is None
+
+    # SQLite standard datetime('now') format
+    dt = parse_db_timestamp("2026-11-07 14:00:00")
+    assert dt == datetime(2026, 11, 7, 14, 0, 0, tzinfo=timezone.utc)
+
+    # ISO format with Z
+    dt_z = parse_db_timestamp("2026-11-07T14:00:00Z")
+    assert dt_z == datetime(2026, 11, 7, 14, 0, 0, tzinfo=timezone.utc)
+
+    # ISO format with timezone offset
+    dt_tz = parse_db_timestamp("2026-11-07T19:30:00+05:30")
+    assert dt_tz.timestamp() == datetime(2026, 11, 7, 14, 0, 0, tzinfo=timezone.utc).timestamp()
+
+
+def test_active_session_history_timeout_and_gap() -> None:
+    path = _tmp_db_path()
+    try:
+        _init_temp_db(path)
+        import app.config as cfg_module
+        from datetime import datetime, timezone
+
+        orig = cfg_module.config.database_url
+        cfg_module.config.database_url = f"sqlite:///{path}"
+        try:
+            # 1. Empty history
+            ref = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
+            h = repository.get_active_session_history("+15550001111", limit=6, timeout_seconds=1800, reference_time=ref)
+            assert h == []
+
+            # 2. Insert messages from an old conversation (2 hours prior)
+            repository.create_message(
+                external_message_id="old_1",
+                sender_id="+15550001111",
+                direction="inbound",
+                text="tell me about Samsung deals",
+                created_at="2026-11-07 10:00:00",
+            )
+            repository.create_message(
+                external_message_id="old_2",
+                sender_id="+15550001111",
+                direction="outbound",
+                text="Here are Samsung deals...",
+                created_at="2026-11-07 10:00:30",
+            )
+
+            # Query at 12:00:00 (elapsed = 1h 59m 30s > 30m timeout) -> session expired!
+            h_expired = repository.get_active_session_history(
+                "+15550001111",
+                limit=6,
+                timeout_seconds=1800,
+                reference_time=ref,
+            )
+            assert h_expired == []
+
+            # 3. User sends a message at 12:00:00 (new session starts)
+            repository.create_message(
+                external_message_id="new_inbound_1",
+                sender_id="+15550001111",
+                direction="inbound",
+                text="hello",
+                created_at="2026-11-07 12:00:00",
+            )
+            repository.create_message(
+                external_message_id="new_outbound_1",
+                sender_id="+15550001111",
+                direction="outbound",
+                text="Hey! How's it going?",
+                created_at="2026-11-07 12:00:05",
+            )
+
+            # User sends follow-up at 12:02:00 (within 30m timeout window)
+            ref_active = datetime(2026, 11, 7, 12, 2, 0, tzinfo=timezone.utc)
+            repository.create_message(
+                external_message_id="new_inbound_2",
+                sender_id="+15550001111",
+                direction="inbound",
+                text="what is the weather today?",
+                created_at="2026-11-07 12:02:00",
+            )
+
+            h_active = repository.get_active_session_history(
+                "+15550001111",
+                limit=6,
+                timeout_seconds=1800,
+                reference_time=ref_active,
+                exclude_external_id="new_inbound_2",
+            )
+            # Old Samsung messages are cut off by the 2-hour idle gap!
+            # Only the 2 messages from 12:00:00 are returned
+            assert len(h_active) == 2
+            assert h_active[0]["text"] == "hello"
+            assert h_active[1]["text"] == "Hey! How's it going?"
+        finally:
+            cfg_module.config.database_url = orig
+    finally:
+        os.unlink(path)

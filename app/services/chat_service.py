@@ -20,6 +20,7 @@ All steps are async-safe.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import List, Optional, Protocol
 
 from app.config import config
@@ -80,6 +81,7 @@ class ChatService:
         self.sender = sender
         self.tool_router = tool_router or default_tool_router
         self.max_history = config.max_history_messages
+        self.session_timeout_seconds = config.session_timeout_seconds
 
     async def process_inbound(
         self,
@@ -140,13 +142,23 @@ class ChatService:
             status="received",
         )
 
-        # 4. Retrieve recent conversation history.
-        history = repository.get_recent_history(sender_id, self.max_history)
+        # 4. Retrieve conversation history for the active session.
+        # Starting a new conversation is timing-driven: if the idle gap since the last message
+        # exceeds session_timeout_seconds, get_active_session_history returns [],
+        # starting fresh without carrying over old topics or search queries.
+        ref_time = repository.parse_db_timestamp(timestamp) or datetime.now(timezone.utc)
+        history = repository.get_active_session_history(
+            sender_id=sender_id,
+            limit=self.max_history,
+            timeout_seconds=self.session_timeout_seconds,
+            reference_time=ref_time,
+            exclude_external_id=external_message_id,
+        )
 
-        # Extract previous inbound user message for follow-ups (e.g. "use searching")
+        # Extract previous inbound user message within the active session for follow-ups (e.g. "use searching")
         previous_user_message: Optional[str] = None
         for entry in reversed(history):
-            if entry["direction"] == "inbound" and entry["text"] != text:
+            if entry["direction"] == "inbound":
                 previous_user_message = entry["text"]
                 break
 
@@ -160,52 +172,35 @@ class ChatService:
             "input_value": tool_result.input_value,
         }
 
-        # Check if the user message is a pure greeting or casual check-in
-        import re
-        GREETING_PATTERN = re.compile(
-            r"^(?:hi|hello|hey|hola|greetings|good\s+(?:morning|afternoon|evening)|howdy|sup)[\s\.\?!]*$",
-            re.IGNORECASE,
-        )
-        is_greeting = bool(GREETING_PATTERN.match(text.strip()))
-
-        # 6. Call local LLM with conversation history and grounded context.
-        # Use recent history entries and compact past assistant replies to prevent prompt token bloat
+        # 6. Call local LLM with active session history and grounded context.
+        # Use active session history entries and compact past assistant replies to keep context concise
         llm_messages: List[dict] = []
-        if is_greeting:
-            # Pure greetings start a fresh, warm conversation turn without carrying old dense search topics
-            llm_messages.append({"role": "user", "content": text})
-        else:
-            recent_history = history[-6:] if len(history) > 6 else history
-            for entry in recent_history:
-                role = "assistant" if entry["direction"] == "outbound" else "user"
-                content = entry["text"]
-                # Cleanly compact older assistant replies without injecting artificial meta-tags
-                if role == "assistant" and len(content) > 280:
-                    first_part = content.split("\n\n")[0].strip()
-                    if len(first_part) > 280:
-                        first_part = first_part[:280].rsplit(" ", 1)[0] + "..."
-                    content = first_part
-                llm_messages.append({"role": role, "content": content})
+        for entry in history:
+            role = "assistant" if entry["direction"] == "outbound" else "user"
+            content = entry["text"]
+            # Cleanly compact older assistant replies without injecting artificial meta-tags
+            if role == "assistant" and len(content) > 280:
+                first_part = content.split("\n\n")[0].strip()
+                if len(first_part) > 280:
+                    first_part = first_part[:280].rsplit(" ", 1)[0] + "..."
+                content = first_part
+            llm_messages.append({"role": role, "content": content})
 
-            effective_user_text = text
-            if tool_result.context_text:
-                effective_user_text = (
-                    f"{text}\n\n"
-                    f"[Factual Research Context]:\n"
-                    f"{tool_result.context_text}\n\n"
-                    f"Instructions:\n"
-                    f"1. Synthesize the research context above to directly address the user request.\n"
-                    f"2. Keep paragraphs short (2-3 sentences max) and use clean bullet points or cards for mobile readability.\n"
-                    f"3. Avoid excessively long lines of unbroken text so messages read well on mobile screens.\n"
-                    f"4. Only mention active or upcoming events; do not present expired events as upcoming.\n"
-                    f"5. Always include clickable markdown links [Title](URL) for event links and sources."
-                )
+        effective_user_text = text
+        if tool_result.context_text:
+            effective_user_text = (
+                f"{text}\n\n"
+                f"[Factual Research Context]:\n"
+                f"{tool_result.context_text}\n\n"
+                f"Instructions:\n"
+                f"1. Synthesize the research context above to directly address the user request.\n"
+                f"2. Keep paragraphs short (2-3 sentences max) and use clean bullet points or cards for mobile readability.\n"
+                f"3. Avoid excessively long lines of unbroken text so messages read well on mobile screens.\n"
+                f"4. Only mention active or upcoming events; do not present expired events as upcoming.\n"
+                f"5. Always include clickable markdown links [Title](URL) for event links and sources."
+            )
 
-            if not llm_messages or llm_messages[-1]["content"] != text:
-                llm_messages.append({"role": "user", "content": effective_user_text})
-            else:
-                # Replace the last turn's text with the enriched version for LLM inference
-                llm_messages[-1]["content"] = effective_user_text
+        llm_messages.append({"role": "user", "content": effective_user_text})
 
         is_research = bool(tool_result.context_text)
         generation_tokens = 400 if is_research else 180

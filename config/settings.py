@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # --- Runtime --------------------------------------------------------------
     max_history_messages: int = Field(default=6)
     request_timeout_seconds: int = Field(default=120)
+    session_timeout_minutes: int = Field(default=30)
 
     # --- Web Search (SearXNG) -------------------------------------------------
     searxng_base_url: str = Field(default="http://127.0.0.1:8080")
@@ -73,6 +74,11 @@ class Settings(BaseSettings):
                 # Silently ignore non-integer entries to keep the app bootable.
                 continue
         return ids
+
+    @property
+    def session_timeout_seconds(self) -> int:
+        """Return session timeout in seconds (minimum 1 second)."""
+        return max(1, self.session_timeout_minutes * 60)
 
     # --------------------------------------------------------------------------
     def __repr__(self) -> str:  # pragma: no cover - debugging only, secrets masked
