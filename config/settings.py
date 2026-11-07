@@ -1,0 +1,86 @@
+"""Application configuration for the Local AI Chatbot (Karna).
+
+Loads settings from environment variables / `.env` via pydantic-settings.
+Never prints secret values.
+"""
+
+from __future__ import annotations
+
+from typing import List, Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Runtime configuration.
+
+    Values are read from environment variables, falling back to `.env` in the
+    project root. Sensitive fields are excluded from string representations so
+    they are never accidentally logged.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # --- Application ----------------------------------------------------------
+    app_env: str = Field(default="development")
+    host: str = Field(default="127.0.0.1")
+    port: int = Field(default=8000)
+
+    # --- Local LLM (llama.cpp server) ----------------------------------------
+    llm_base_url: str = Field(default="")
+    llm_model: Optional[str] = Field(default=None)
+    llm_api_key: Optional[str] = Field(default=None)
+
+    # --- Telegram Bot API ----------------------------------------------------
+    telegram_bot_token: Optional[str] = Field(default=None)
+    # Comma-separated allowed Telegram user IDs (integers, e.g. 123456789).
+    telegram_allowed_user_ids: str = Field(default="")
+
+    # --- Database -------------------------------------------------------------
+    database_url: str = Field(default="sqlite:///./data/chatbot.db")
+
+    # --- Runtime --------------------------------------------------------------
+    max_history_messages: int = Field(default=12)
+    request_timeout_seconds: int = Field(default=60)
+
+    # --------------------------------------------------------------------------
+    @property
+    def allowed_telegram_user_ids(self) -> List[int]:
+        """Return the list of allowed Telegram user IDs as integers."""
+        raw = self.telegram_allowed_user_ids or ""
+        ids: List[int] = []
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                ids.append(int(part))
+            except ValueError:
+                # Silently ignore non-integer entries to keep the app bootable.
+                continue
+        return ids
+
+    # --------------------------------------------------------------------------
+    def __repr__(self) -> str:  # pragma: no cover - debugging only, secrets masked
+        return (
+            "Settings("
+            f"app_env={self.app_env!r}, "
+            f"host={self.host!r}, port={self.port!r}, "
+            f"llm_base_url={self.llm_base_url!r}, "
+            f"llm_model={'<set>' if self.llm_model else '<unset>'}, "
+            f"telegram_configured={'<set>' if self.telegram_bot_token else '<unset>'}, "
+            f"database_url={self.database_url!r}"
+            ")"
+        )
+
+    def __str__(self) -> str:  # pragma: no cover - debugging only, secrets masked
+        return self.__repr__()
+
+
+settings = Settings()

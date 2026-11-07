@@ -1,0 +1,22 @@
+[Unit]
+Description=Karna Telegram AI Chatbot (long polling)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/vhanghar/Karna
+Environment=HOME=/home/vhanghar
+EnvironmentFile=/home/vhanghar/Karna/.env
+# Run the Telegram long-polling bot using the project virtual environment.
+ExecStart=/home/vhanghar/Karna/.venv/bin/python -m app.telegram_bot
+Restart=on-failure
+RestartSec=5
+
+# No webhooks, no Cloudflare Tunnel: long polling uses outbound getRequests
+# only, so the local LLM endpoint is never exposed publicly.
+# Secrets are loaded from .env via EnvironmentFile, never hardcoded here.
+
+[Install]
+WantedBy=default.target

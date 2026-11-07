@@ -1,0 +1,21 @@
+[Unit]
+Description=Local AI Chatbot (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/vhanghar/Karna
+Environment=HOME=/home/vhanghar
+EnvironmentFile=/home/vhanghar/Karna/.env
+# Activate the project virtual environment and run the FastAPI app.
+ExecStart=/home/vhanghar/Karna/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+# Do not expose the service beyond localhost; Cloudflare Tunnel handles public ingress.
+# Secrets are loaded from .env via EnvironmentFile, never hardcoded here.
+
+[Install]
+WantedBy=default.target

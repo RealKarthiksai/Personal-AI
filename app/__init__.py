@@ -1,0 +1,1 @@
+"""Local AI Chatbot (Karna) application package."""

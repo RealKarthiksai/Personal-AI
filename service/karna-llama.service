@@ -1,0 +1,15 @@
+[Unit]
+Description=Karna Local LLM (llama.cpp server)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/vhanghar/Karna
+ExecStart=/usr/bin/llama-server -m /home/vhanghar/.local/share/lacc/models/qwen3.5-2b/models--gguf--Qwen3.5-2B-GGUF/snapshots/47f5192dcee31b32db0ba0acc04cccef89cb4b2c/qwen3.5-2b-Q4_K_M.gguf --host 127.0.0.1 --port 8001 -c 4096 --alias qwen3.5-2b -t 4 --reasoning-budget 0
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
