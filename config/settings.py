@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     database_url: str = Field(default="sqlite:///./data/chatbot.db")
 
     # --- Runtime --------------------------------------------------------------
-    max_history_messages: int = Field(default=12)
-    request_timeout_seconds: int = Field(default=60)
+    max_history_messages: int = Field(default=6)
+    request_timeout_seconds: int = Field(default=120)
 
     # --- Web Search (SearXNG) -------------------------------------------------
     searxng_base_url: str = Field(default="http://127.0.0.1:8080")

@@ -24,6 +24,6 @@ exec /usr/bin/llama-server \
   --port "$PORT" \
   -c 4096 \
   --alias qwen3.5-2b \
-  -t 6 \
+  -t 8 \
   --parallel 1 \
   --reasoning-budget 0

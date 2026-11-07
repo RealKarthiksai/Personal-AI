@@ -6,6 +6,7 @@ transient failures. The bot token is never logged.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 import httpx
@@ -56,7 +57,8 @@ class TelegramClient:
     ) -> Optional[str]:
         """Send a text message, formatting into platform-compliant chunks.
 
-        Returns the Telegram message id on success (or the last message id if split).
+        If the message exceeds the message length limit (3500 chars), it is
+        automatically split into two or more sequential messages.
         Implements bounded retries for transient failures and rate limits.
         """
         if not self.token:
@@ -66,16 +68,26 @@ class TelegramClient:
             )
             return None
 
-        # Format message into Telegram HTML chunks (under 4000 chars)
-        chunks = formatting_engine.format_message(text, channel="telegram", max_length=4000)
+        # Format message into Telegram HTML chunks (splits if text exceeds limit)
+        chunks = formatting_engine.format_message(text, channel="telegram", max_length=3500)
         if not chunks:
             if text:
                 chunks = [text]
             else:
                 return None
 
+        if len(chunks) > 1:
+            logger.info(
+                "TelegramClient: message exceeds single message limit (%d chars); sending in %d messages",
+                len(text),
+                len(chunks),
+                extra={"request_id": "system", "message_id": "-"},
+            )
+
         last_message_id: Optional[str] = None
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks):
+            if idx > 0:
+                await asyncio.sleep(0.3)
             mid = await self._send_chunk(chat_id=chat_id, text=chunk)
             if mid:
                 last_message_id = mid

@@ -151,10 +151,19 @@ class ChatService:
         }
 
         # 6. Call local LLM with conversation history and grounded context.
+        # Use recent history entries and compact past assistant replies to prevent prompt token bloat
         llm_messages: List[dict] = []
-        for entry in history:
+        recent_history = history[-6:] if len(history) > 6 else history
+        for entry in recent_history:
             role = "assistant" if entry["direction"] == "outbound" else "user"
-            llm_messages.append({"role": role, "content": entry["text"]})
+            content = entry["text"]
+            # Compact older assistant replies (which may contain huge tables/listings)
+            if role == "assistant" and len(content) > 280:
+                first_part = content.split("\n\n")[0].strip()
+                if len(first_part) > 280:
+                    first_part = first_part[:280] + "..."
+                content = f"{first_part} [prior response summarized]"
+            llm_messages.append({"role": role, "content": content})
 
         effective_user_text = text
         if tool_result.context_text:
@@ -164,9 +173,10 @@ class ChatService:
                 f"{tool_result.context_text}\n\n"
                 f"Instructions:\n"
                 f"1. Synthesize the research context above to directly address the user request.\n"
-                f"2. Format your response beautifully (like ChatGPT/Gemini): start with an executive summary, follow with structured details (use a Markdown table or bold cards for dates, venue, prizes), and highlight key deadlines.\n"
-                f"3. Only mention active or upcoming events; do not present expired events as upcoming.\n"
-                f"4. Always include clickable markdown links [Title](URL) for event links and sources."
+                f"2. Keep paragraphs short (2-3 sentences max) and use clean bullet points or cards for mobile readability.\n"
+                f"3. Avoid excessively long lines of unbroken text so messages read well on mobile screens.\n"
+                f"4. Only mention active or upcoming events; do not present expired events as upcoming.\n"
+                f"5. Always include clickable markdown links [Title](URL) for event links and sources."
             )
 
         if not llm_messages or llm_messages[-1]["content"] != text:
@@ -175,11 +185,14 @@ class ChatService:
             # Replace the last turn's text with the enriched version for LLM inference
             llm_messages[-1]["content"] = effective_user_text
 
+        # Dynamic token budget: 180 for casual conversation, 400 for research context
+        generation_tokens = 400 if tool_result.context_text else 180
+
         try:
             reply = await self.llm.generate(
                 messages=llm_messages,
                 system_prompt=get_dynamic_system_prompt(),
-                max_tokens=450,
+                max_tokens=generation_tokens,
                 temperature=0.3,
             )
         except LLMClientError as exc:

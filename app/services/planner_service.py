@@ -58,6 +58,21 @@ class PlannerService:
                 required_details=["page summary", "key content"],
             )
 
+        # Fast path: Greetings and casual conversation (bypasses LLM in 0ms)
+        casual_pattern = re.compile(
+            r"^(?:hi|hello|hey|hola|greetings|good\s+(?:morning|afternoon|evening)|howdy|sup|"
+            r"how\s+are\s+you|how\s+are\s+u|what\'?s\s+up|who\s+are\s+you|what\s+is\s+your\s+name|"
+            r"what\s+can\s+you\s+do|help|thanks|thank\s+you|ok|okay|bye|goodbye)[\s\.\?!]*$",
+            re.IGNORECASE,
+        )
+        if casual_pattern.match(effective_text):
+            return SearchPlan(
+                requires_search=False,
+                task_summary="Conversational response",
+                search_queries=[],
+                required_details=[],
+            )
+
         prompt = (
             f"Today is {temp_ctx['day']}, {temp_ctx['month']} {temp_ctx['day']}, {temp_ctx['year']} "
             f"(Date: {temp_ctx['current_date']}, Timezone: {temp_ctx['timezone']}).\n"
