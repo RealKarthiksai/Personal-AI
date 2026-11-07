@@ -161,23 +161,41 @@ def test_history_compaction_and_token_budget(monkeypatch, tmp_path) -> None:
         service = ChatService(sender=_FakeSender())
         service.llm = _RecordingLLM()
 
+        # Non-greeting follow-up message: should include compacted history
         result = _asyncio_run(
             service.process_inbound(
                 sender_id="123456789",
                 external_message_id="tg:1002",
-                text="hello",
+                text="can you tell me more about that?",
                 request_id="req4",
             )
         )
         assert result["sent"] is True
 
-        # Verify prior outbound response was compacted
+        # Verify prior outbound response was compacted cleanly without artificial tags
         assistant_msgs = [m for m in captured_messages if m["role"] == "assistant"]
         assert len(assistant_msgs) == 1
         assert len(assistant_msgs[0]["content"]) < len(massive_text)
-        assert "[prior response summarized]" in assistant_msgs[0]["content"]
+        assert "Prior Table" in assistant_msgs[0]["content"]
 
-        # Verify max_tokens for casual greeting is 180
+        # Verify max_tokens for casual conversation is 180
+        assert captured_max_tokens[0] == 180
+
+        # Now test pure greeting: starts fresh without old search baggage
+        captured_messages.clear()
+        captured_max_tokens.clear()
+        result_greeting = _asyncio_run(
+            service.process_inbound(
+                sender_id="123456789",
+                external_message_id="tg:1003",
+                text="hello",
+                request_id="req5",
+            )
+        )
+        assert result_greeting["sent"] is True
+        # Greeting should have only the fresh user turn
+        assert len(captured_messages) == 1
+        assert captured_messages[0]["content"] == "hello"
         assert captured_max_tokens[0] == 180
     finally:
         cfg_module.config.database_url = orig_db

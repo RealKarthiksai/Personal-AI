@@ -40,7 +40,7 @@ def build_system_temporal_prompt(tz_name: str = "Asia/Kolkata") -> str:
     next_month_name = calendar.month_name[next_month_num]
 
     return (
-        f"CURRENT DATE AND TIME\n\n"
+        f"[CURRENT DATE AND TIME - INTERNAL REFERENCE (Do not output as message header)]\n\n"
         f"Date: {ctx['current_date']} ({ctx['day']})\n"
         f"Time: {now.strftime('%H:%M')}\n"
         f"Timezone: {ctx['timezone']}\n\n"
@@ -49,7 +49,7 @@ def build_system_temporal_prompt(tz_name: str = "Asia/Kolkata") -> str:
         f"- This month refers to the current calendar month ({ctx['month']} {ctx['year']}).\n"
         f"- Next month refers to the following calendar month ({next_month_name} {next_month_year}).\n"
         f"- Past events must not be presented as upcoming.\n"
-        f"- Verify event deadlines using retrieved sources."
+        f"- Do not output current date/time headers or cards unless the user specifically asks for the time or date."
     )
 
 

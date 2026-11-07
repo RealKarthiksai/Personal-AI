@@ -31,22 +31,32 @@ from app.utils.logging import get_logger
 
 logger = get_logger("app.chat_service")
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are Karna, an intelligent, highly capable personal AI assistant. "
-    "Provide well-structured, elegant, and clearly formatted responses similar to modern AI assistants like ChatGPT and Gemini.\n\n"
-    "Formatting Guidelines:\n"
-    "- Structure: Begin with a direct summary or executive answer.\n"
-    "- Presentation: For events, comparisons, or multi-attribute data, use clean Markdown tables or structured bullet points with bold field names.\n"
-    "- Key Deadlines: Clearly call out urgent dates, registration deadlines, or requirements.\n"
-    "- Links & Citations: Always include direct, clickable markdown links [Title](URL) for sources and registrations.\n"
-    "- Tone: Clear, professional, informative, and beautifully formatted with markdown."
+DEFAULT_CONVERSATIONAL_PROMPT = (
+    "You are Karna, a warm, lively, witty, and intelligent personal AI companion. "
+    "Talk naturally and conversationally, like a smart, engaging friend.\n\n"
+    "Conversation Rules:\n"
+    "- Tone: Friendly, vibrant, warm, and natural. Speak in direct human language.\n"
+    "- Formatting: NEVER use rigid corporate templates, 'EXECUTIVE SUMMARY', 'ANALYSIS', 'NEXT STEPS', or support ticket jargon for casual conversations.\n"
+    "- Length: Keep replies concise and easy to read on mobile (1-3 short paragraphs max).\n"
+    "- Personality: Show humor, curiosity, and warmth. If the user asks why you responded weirdly or made a mistake, be candid, lighthearted, and self-aware."
+)
+
+DEFAULT_RESEARCH_PROMPT = (
+    "You are Karna, an intelligent and sharp personal AI assistant. "
+    "Present research, data, and answers clearly, engagingly, and beautifully.\n\n"
+    "Presentation Rules:\n"
+    "- Structure: Give a direct, engaging answer followed by organized key points.\n"
+    "- Formatting: Use clean bullet points, highlights, or cards for dates, prices, and locations. Do NOT use stiff bureaucratic labels like 'EXECUTIVE SUMMARY' or 'NEXT STEPS'.\n"
+    "- Links: Include direct, clickable markdown links [Title](URL) for sources and official registrations.\n"
+    "- Tone: Helpful, knowledgeable, and articulate, yet conversational and friendly."
 )
 
 
-def get_dynamic_system_prompt() -> str:
-    """Build the system prompt with live temporal context, rules, and presentation style."""
+def get_dynamic_system_prompt(is_research: bool = False) -> str:
+    """Build the system prompt with live temporal context and appropriate conversational persona."""
     temporal_block = build_system_temporal_prompt()
-    return f"{DEFAULT_SYSTEM_PROMPT}\n\n{temporal_block}"
+    base_prompt = DEFAULT_RESEARCH_PROMPT if is_research else DEFAULT_CONVERSATIONAL_PROMPT
+    return f"{base_prompt}\n\n{temporal_block}"
 
 
 
@@ -150,50 +160,63 @@ class ChatService:
             "input_value": tool_result.input_value,
         }
 
+        # Check if the user message is a pure greeting or casual check-in
+        import re
+        GREETING_PATTERN = re.compile(
+            r"^(?:hi|hello|hey|hola|greetings|good\s+(?:morning|afternoon|evening)|howdy|sup)[\s\.\?!]*$",
+            re.IGNORECASE,
+        )
+        is_greeting = bool(GREETING_PATTERN.match(text.strip()))
+
         # 6. Call local LLM with conversation history and grounded context.
         # Use recent history entries and compact past assistant replies to prevent prompt token bloat
         llm_messages: List[dict] = []
-        recent_history = history[-6:] if len(history) > 6 else history
-        for entry in recent_history:
-            role = "assistant" if entry["direction"] == "outbound" else "user"
-            content = entry["text"]
-            # Compact older assistant replies (which may contain huge tables/listings)
-            if role == "assistant" and len(content) > 280:
-                first_part = content.split("\n\n")[0].strip()
-                if len(first_part) > 280:
-                    first_part = first_part[:280] + "..."
-                content = f"{first_part} [prior response summarized]"
-            llm_messages.append({"role": role, "content": content})
-
-        effective_user_text = text
-        if tool_result.context_text:
-            effective_user_text = (
-                f"{text}\n\n"
-                f"[Factual Research Context]:\n"
-                f"{tool_result.context_text}\n\n"
-                f"Instructions:\n"
-                f"1. Synthesize the research context above to directly address the user request.\n"
-                f"2. Keep paragraphs short (2-3 sentences max) and use clean bullet points or cards for mobile readability.\n"
-                f"3. Avoid excessively long lines of unbroken text so messages read well on mobile screens.\n"
-                f"4. Only mention active or upcoming events; do not present expired events as upcoming.\n"
-                f"5. Always include clickable markdown links [Title](URL) for event links and sources."
-            )
-
-        if not llm_messages or llm_messages[-1]["content"] != text:
-            llm_messages.append({"role": "user", "content": effective_user_text})
+        if is_greeting:
+            # Pure greetings start a fresh, warm conversation turn without carrying old dense search topics
+            llm_messages.append({"role": "user", "content": text})
         else:
-            # Replace the last turn's text with the enriched version for LLM inference
-            llm_messages[-1]["content"] = effective_user_text
+            recent_history = history[-6:] if len(history) > 6 else history
+            for entry in recent_history:
+                role = "assistant" if entry["direction"] == "outbound" else "user"
+                content = entry["text"]
+                # Cleanly compact older assistant replies without injecting artificial meta-tags
+                if role == "assistant" and len(content) > 280:
+                    first_part = content.split("\n\n")[0].strip()
+                    if len(first_part) > 280:
+                        first_part = first_part[:280].rsplit(" ", 1)[0] + "..."
+                    content = first_part
+                llm_messages.append({"role": role, "content": content})
 
-        # Dynamic token budget: 180 for casual conversation, 400 for research context
-        generation_tokens = 400 if tool_result.context_text else 180
+            effective_user_text = text
+            if tool_result.context_text:
+                effective_user_text = (
+                    f"{text}\n\n"
+                    f"[Factual Research Context]:\n"
+                    f"{tool_result.context_text}\n\n"
+                    f"Instructions:\n"
+                    f"1. Synthesize the research context above to directly address the user request.\n"
+                    f"2. Keep paragraphs short (2-3 sentences max) and use clean bullet points or cards for mobile readability.\n"
+                    f"3. Avoid excessively long lines of unbroken text so messages read well on mobile screens.\n"
+                    f"4. Only mention active or upcoming events; do not present expired events as upcoming.\n"
+                    f"5. Always include clickable markdown links [Title](URL) for event links and sources."
+                )
+
+            if not llm_messages or llm_messages[-1]["content"] != text:
+                llm_messages.append({"role": "user", "content": effective_user_text})
+            else:
+                # Replace the last turn's text with the enriched version for LLM inference
+                llm_messages[-1]["content"] = effective_user_text
+
+        is_research = bool(tool_result.context_text)
+        generation_tokens = 400 if is_research else 180
+        temperature = 0.3 if is_research else 0.7
 
         try:
             reply = await self.llm.generate(
                 messages=llm_messages,
-                system_prompt=get_dynamic_system_prompt(),
+                system_prompt=get_dynamic_system_prompt(is_research=is_research),
                 max_tokens=generation_tokens,
-                temperature=0.3,
+                temperature=temperature,
             )
         except LLMClientError as exc:
             result["error"] = f"llm error: {exc}"
