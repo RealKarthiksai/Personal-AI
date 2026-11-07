@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     openalex_email: Optional[str] = Field(default=None)
     rsshub_base_url: str = Field(default="https://rsshub.app")
 
+    # --- Background Scheduler (APScheduler) -----------------------------------
+    scheduler_enabled: bool = Field(default=True)
+    rss_sync_interval_minutes: int = Field(default=30)
+    github_sync_interval_hours: int = Field(default=6)
+    openalex_sync_interval_hours: int = Field(default=12)
+    reddit_sync_interval_hours: int = Field(default=4)
+
     # --------------------------------------------------------------------------
     @property
     def allowed_telegram_user_ids(self) -> List[int]:

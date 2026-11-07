@@ -17,6 +17,7 @@ from app.integrations.github import github_router
 from app.integrations.openalex import openalex_router
 from app.integrations.reddit import reddit_router
 from app.integrations.rss import rss_router
+from app.scheduler import scheduler_manager, scheduler_router
 from app.config import config
 from app.database import database
 from app.utils.logging import configure_logging, get_logger
@@ -39,12 +40,14 @@ app.include_router(github_router)
 app.include_router(openalex_router)
 app.include_router(reddit_router)
 app.include_router(rss_router)
+app.include_router(scheduler_router)
 
 
 @app.on_event("startup")
 async def on_startup() -> None:
     """Initialize the database and log configuration status (no secrets)."""
     database.init_db()
+    scheduler_manager.start()
     logger.info(
         "Application starting | env=%s | llm=%s | telegram=%s | searxng=%s",
         config.app_env,
@@ -53,6 +56,12 @@ async def on_startup() -> None:
         "configured" if config.is_searxng_configured() else "NOT configured",
         extra={"request_id": "system", "message_id": "system"},
     )
+
+
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    """Shut down background scheduler and background tasks."""
+    scheduler_manager.shutdown()
 
 
 @app.get("/", include_in_schema=False)

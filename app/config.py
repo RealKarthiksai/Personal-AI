@@ -48,6 +48,13 @@ class Config:
         self.openalex_email = s.openalex_email
         self.rsshub_base_url = s.rsshub_base_url
 
+        # Scheduler
+        self.scheduler_enabled = s.scheduler_enabled
+        self.rss_sync_interval_minutes = s.rss_sync_interval_minutes
+        self.github_sync_interval_hours = s.github_sync_interval_hours
+        self.openalex_sync_interval_hours = s.openalex_sync_interval_hours
+        self.reddit_sync_interval_hours = s.reddit_sync_interval_hours
+
     def is_telegram_configured(self) -> bool:
         return bool(self.telegram_bot_token)
 
