@@ -11,6 +11,7 @@ from typing import Optional
 import httpx
 
 from app.config import config
+from app.formatting.engine import formatting_engine
 from app.utils.logging import get_logger, redact
 
 logger = get_logger("app.telegram_client")
@@ -39,22 +40,24 @@ class TelegramClient:
     def _headers(self) -> dict:
         return {"Content-Type": "application/json"}
 
-    def _payload(self, chat_id: str, text: str) -> dict:
-        return {
+    def _payload(self, chat_id: str, text: str, parse_mode: Optional[str] = "HTML") -> dict:
+        payload = {
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "Markdown",
         }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        return payload
 
     async def send_text(
         self,
         chat_id: str,
         text: str,
     ) -> Optional[str]:
-        """Send a text message. Returns the Telegram message id on success.
+        """Send a text message, formatting into platform-compliant chunks.
 
-        Implements bounded retries (max_retries) for transient failures and
-        rate-limited responses (429, 5xx). Returns None if all attempts fail.
+        Returns the Telegram message id on success (or the last message id if split).
+        Implements bounded retries for transient failures and rate limits.
         """
         if not self.token:
             logger.warning(
@@ -63,7 +66,31 @@ class TelegramClient:
             )
             return None
 
-        payload = self._payload(chat_id, text)
+        # Format message into Telegram HTML chunks (under 4000 chars)
+        chunks = formatting_engine.format_message(text, channel="telegram", max_length=4000)
+        if not chunks:
+            if text:
+                chunks = [text]
+            else:
+                return None
+
+        last_message_id: Optional[str] = None
+        for chunk in chunks:
+            mid = await self._send_chunk(chat_id=chat_id, text=chunk)
+            if mid:
+                last_message_id = mid
+            else:
+                return None
+
+        return last_message_id
+
+    async def _send_chunk(
+        self,
+        chat_id: str,
+        text: str,
+    ) -> Optional[str]:
+        """Send a single chunk with bounded retries and fallback."""
+        payload = self._payload(chat_id, text, parse_mode="HTML")
         url = self.base_url
 
         last_error: Optional[str] = None
