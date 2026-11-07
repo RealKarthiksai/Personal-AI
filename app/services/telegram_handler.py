@@ -101,7 +101,7 @@ async def handle_command(
     """Handle a Telegram command. Returns a result dict describing the outcome."""
     command = (update.command or "").lower()
 
-    if command in ("/search", "/read"):
+    if command in ("/search", "/read", "/briefing", "/digest"):
         if hasattr(sender, "send_chat_action"):
             await sender.send_chat_action(to=update.chat_id, action="typing")
         return await handle_text_message(
@@ -117,10 +117,11 @@ async def handle_command(
             "Commands:\n"
             "/search <query> - search the live web\n"
             "/read <url> - read and summarize a webpage\n"
+            "/briefing - get your daily intelligence digest from indexed feeds & sources\n"
             "/status - show bot & tool connectivity status\n"
             "/reset - clear conversation history\n"
             "/id - show your Telegram user ID\n\n"
-            "Or ask any question naturally—web searches and URL reading will trigger automatically when needed."
+            "Or ask any question naturally—web searches, URL reading, and briefings trigger automatically when needed."
         )
         await sender.send_text(to=update.chat_id, text=reply)
         return {
@@ -156,14 +157,22 @@ async def handle_command(
 
     if command == "/status":
         from app.config import config
+        from app.ingestion.storage import list_sources
 
         llm_ok = bool(config.llm_base_url)
         searx_ok = bool(config.searxng_base_url)
+        sources = list_sources()
+        total_records = sum(s.get("total_records", 0) for s in sources)
+        active_sources = [s["name"] for s in sources if s.get("total_records", 0) > 0]
+        sources_summary = f"{total_records} records across {len(active_sources)} sources ({', '.join(active_sources)})" if active_sources else "0 records"
+
         reply = (
             "Karna Status\n"
             f"Local LLM: {'configured' if llm_ok else 'NOT configured'}\n"
             f"Web Search (SearXNG): {'configured' if searx_ok else 'NOT configured'}\n"
             "Web Extractor: Crawl4AI + Playwright\n"
+            f"Indexed Intelligence: {sources_summary}\n"
+            f"Scheduler: {'enabled' if config.scheduler_enabled else 'disabled'}\n"
             "Channel: Telegram (long polling)\n"
             f"Max history messages: {config.max_history_messages}"
         )

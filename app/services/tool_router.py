@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional
 
+from app.ingestion.retrieval import format_records_for_llm, retrieve_external_information
 from app.services.extractor_service import ExtractorService, extractor_service
 from app.services.planner_service import PlannerService, planner_service
 from app.services.query_normalizer import normalize_query
@@ -44,6 +45,12 @@ REALTIME_KEYWORDS = [
     r"\b(?:hackathon|hackathons|conference|conferences|meetup|meetups|webinar|webinars)\b",
     r"\b(?:weather|forecast|stock\s+price|live\s+score|breaking\s+news|ticket\s+booking)\b",
     r"\b(?:upcoming\s+events|events\s+happening|happening\s+in)\b",
+]
+
+# Daily briefing / digest patterns
+BRIEFING_PATTERNS = [
+    r"^(?:(?:give\s+me|get\s+me|show\s+me|send\s+me|what\s+is)\s+)?(?:a\s+|my\s+|the\s+)?(?:daily\s+briefing|morning\s+briefing|daily\s+digest|news\s+digest|morning\s+update|today'?s\s+briefing|today'?s\s+digest|today'?s\s+updates|briefing|digest)(?:\s+please)?[\s\.\?!]*$",
+    r"\b(?:what'?s\s+new\s+today|what\s+happened\s+today|anything\s+new\s+today|catch\s+me\s+up|latest\s+feed\s+updates|feed\s+briefing|brief\s+me)[\s\.\?!]*$",
 ]
 
 
@@ -134,6 +141,16 @@ class ToolRouter:
 
         return None
 
+    def detect_briefing(self, text: str) -> bool:
+        """Determine if text requests a daily briefing or news digest."""
+        stripped = text.strip()
+        if stripped.lower().startswith("/briefing") or stripped.lower().startswith("/digest"):
+            return True
+        for pattern in BRIEFING_PATTERNS:
+            if re.search(pattern, stripped, re.IGNORECASE):
+                return True
+        return False
+
     async def route_and_execute(
         self,
         user_message: str,
@@ -142,7 +159,35 @@ class ToolRouter:
         """Analyze message, execute appropriate tool if needed, and return context."""
         clean_text = user_message.strip()
 
-        # 1. URL extraction check (highest priority if URL present)
+        # 1. Daily briefing intent check
+        if self.detect_briefing(clean_text):
+            logger.info("ToolRouter: routing to daily briefing")
+            status_msg = "📰 Compiling daily intelligence briefing..."
+            try:
+                records = retrieve_external_information(limit=8)
+                if records:
+                    context = format_records_for_llm(records)
+                else:
+                    context = (
+                        "No recent intelligence records found in local feeds, monitors, or APIs. "
+                        "Suggest running /sync or adding feed subscriptions."
+                    )
+                return ToolExecutionResult(
+                    tool_name="daily_briefing",
+                    input_value="daily_briefing",
+                    context_text=context,
+                    status_message=status_msg,
+                )
+            except Exception as exc:
+                logger.error("ToolRouter daily briefing failed: %s", exc)
+                return ToolExecutionResult(
+                    tool_name="daily_briefing",
+                    input_value="daily_briefing",
+                    context_text=f"Failed to compile daily briefing: {exc}",
+                    status_message=status_msg,
+                )
+
+        # 2. URL extraction check (highest priority if URL present)
         target_url = self.detect_read_url(clean_text)
         if target_url:
             logger.info("ToolRouter: routing to ExtractorService | url=%r", target_url)
@@ -200,6 +245,15 @@ class ToolRouter:
                                 seen_urls.add(r.url)
 
                 search_context = self.search.format_for_llm(results[:8])
+
+                # Augment search context with matching local indexed intelligence
+                try:
+                    local_records = retrieve_external_information(query=plan.task_summary, limit=3)
+                    if local_records:
+                        local_context = format_records_for_llm(local_records)
+                        search_context = f"{local_context}\n\n{search_context}"
+                except Exception as local_exc:
+                    logger.debug("Failed to retrieve local records for search context: %s", local_exc)
 
                 # 3. Deep crawl & Structured Extraction for event/hackathon queries
                 combined_query_str = (plan.task_summary + " " + " ".join(plan.search_queries)).lower()

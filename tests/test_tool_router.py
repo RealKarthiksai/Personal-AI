@@ -159,3 +159,84 @@ async def test_route_to_search_with_event_deep_crawl(mock_search_svc, mock_extra
     assert "TechFest 2026" in res.context_text
     mock_crawler.deep_crawl.assert_awaited_once()
 
+
+def test_detect_briefing(router):
+    assert router.detect_briefing("/briefing") is True
+    assert router.detect_briefing("/digest") is True
+    assert router.detect_briefing("Give me my daily briefing") is True
+    assert router.detect_briefing("give me a daily briefing") is True
+    assert router.detect_briefing("briefing please") is True
+    assert router.detect_briefing("brief me") is True
+    assert router.detect_briefing("what's new today") is True
+    assert router.detect_briefing("today's updates") is True
+    assert router.detect_briefing("show me morning briefing") is True
+    assert router.detect_briefing("my daily briefing") is True
+    assert router.detect_briefing("hello there") is False
+    assert router.detect_briefing("search for python") is False
+
+
+@pytest.mark.asyncio
+async def test_route_to_daily_briefing_with_records(router, monkeypatch):
+    from app.schemas.external import ExternalRecord
+
+    sample_record = ExternalRecord(
+        source="rss",
+        source_id="item-123",
+        title="Python 3.14 Alpha Released",
+        url="https://python.org/news/314",
+        record_type="article",
+        description="Highlights of the upcoming Python release.",
+        published_at="2026-11-07T00:00:00Z",
+        metadata={"tags": ["python", "release"]},
+    )
+
+    monkeypatch.setattr(
+        "app.services.tool_router.retrieve_external_information",
+        lambda limit=8, **kwargs: [sample_record],
+    )
+
+    res = await router.route_and_execute("give me a daily briefing")
+    assert res.tool_name == "daily_briefing"
+    assert res.input_value == "daily_briefing"
+    assert "Python 3.14 Alpha Released" in res.context_text
+    assert "https://python.org/news/314" in res.context_text
+    assert "Ingested External Records" in res.context_text
+
+
+@pytest.mark.asyncio
+async def test_route_to_daily_briefing_empty(router, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.tool_router.retrieve_external_information",
+        lambda limit=8, **kwargs: [],
+    )
+
+    res = await router.route_and_execute("/briefing")
+    assert res.tool_name == "daily_briefing"
+    assert "No recent intelligence records found" in res.context_text
+
+
+@pytest.mark.asyncio
+async def test_route_to_search_augments_local_records(router, monkeypatch, mock_search_svc):
+    from app.schemas.external import ExternalRecord
+
+    local_record = ExternalRecord(
+        source="github",
+        source_id="repo-999",
+        title="Fast Web Scraper Toolkit",
+        url="https://github.com/fast/scraper",
+        record_type="repository",
+        description="High performance scraper written in Rust.",
+        metadata={"stars": 4200},
+    )
+
+    monkeypatch.setattr(
+        "app.services.tool_router.retrieve_external_information",
+        lambda query=None, limit=3, **kwargs: [local_record] if query else [],
+    )
+
+    res = await router.route_and_execute("search for fast web scraping")
+    assert res.tool_name == "searxng_search"
+    assert "Fast Web Scraper Toolkit" in res.context_text
+    assert "Formatted Search Results" in res.context_text
+
+

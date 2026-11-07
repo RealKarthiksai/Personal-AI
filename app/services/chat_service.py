@@ -188,17 +188,30 @@ class ChatService:
 
         effective_user_text = text
         if tool_result.context_text:
-            effective_user_text = (
-                f"{text}\n\n"
-                f"[Factual Research Context]:\n"
-                f"{tool_result.context_text}\n\n"
-                f"Instructions:\n"
-                f"1. Synthesize the research context above to directly address the user request.\n"
-                f"2. Keep paragraphs short (2-3 sentences max) and use clean bullet points or cards for mobile readability.\n"
-                f"3. Avoid excessively long lines of unbroken text so messages read well on mobile screens.\n"
-                f"4. Only mention active or upcoming events; do not present expired events as upcoming.\n"
-                f"5. Always include clickable markdown links [Title](URL) for event links and sources."
-            )
+            if tool_result.tool_name == "daily_briefing":
+                effective_user_text = (
+                    f"{text}\n\n"
+                    f"[Indexed Intelligence & Daily Digest Context]:\n"
+                    f"{tool_result.context_text}\n\n"
+                    f"Instructions:\n"
+                    f"1. Deliver a crisp, engaging daily intelligence briefing based directly on the indexed records above.\n"
+                    f"2. Group items clearly by topic or source and highlight key insights.\n"
+                    f"3. Keep paragraphs short (1-2 sentences) and format as clean bullet cards for mobile readability.\n"
+                    f"4. Always include clickable markdown links [Title](URL) for each item.\n"
+                    f"5. Do NOT say you don't have a daily briefing; you DO have the fresh intelligence provided above."
+                )
+            else:
+                effective_user_text = (
+                    f"{text}\n\n"
+                    f"[Factual Research Context]:\n"
+                    f"{tool_result.context_text}\n\n"
+                    f"Instructions:\n"
+                    f"1. Synthesize the research context above to directly address the user request.\n"
+                    f"2. Keep paragraphs short (2-3 sentences max) and use clean bullet points or cards for mobile readability.\n"
+                    f"3. Avoid excessively long lines of unbroken text so messages read well on mobile screens.\n"
+                    f"4. Only mention active or upcoming events; do not present expired events as upcoming.\n"
+                    f"5. Always include clickable markdown links [Title](URL) for event links and sources."
+                )
 
         llm_messages.append({"role": "user", "content": effective_user_text})
 
