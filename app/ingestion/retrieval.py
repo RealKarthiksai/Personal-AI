@@ -92,8 +92,12 @@ def record_delivered_items(
                 logger.debug("Failed to record delivered item %s: %s", rid, e)
 
 
-def compute_record_score(record: ExternalRecord, now: Optional[datetime] = None) -> float:
-    """Compute log-scale engagement score with recency weighting."""
+def compute_record_score(
+    record: ExternalRecord,
+    now: Optional[datetime] = None,
+    user_interests: Optional[List[str]] = None,
+) -> float:
+    """Compute log-scale engagement score with recency weighting and interest personalization."""
     current_time = now or datetime.now(timezone.utc)
     base_score = 1.0
 
@@ -106,6 +110,15 @@ def compute_record_score(record: ExternalRecord, now: Optional[datetime] = None)
 
     if "cited_by_count" in meta and isinstance(meta["cited_by_count"], (int, float)):
         base_score += math.log10(max(meta["cited_by_count"], 0) + 1.0) * 1.2
+
+    # Deterministic user interest personalization boost (0 LLM calls)
+    if user_interests:
+        full_text = f"{record.title} {record.description or ''}".lower()
+        for interest in user_interests:
+            clean_int = interest.strip().lower()
+            if clean_int and clean_int in full_text:
+                base_score += 1.5
+                break
 
     # Recency decay
     rec_time_str = record.published_at or record.fetched_at
@@ -130,6 +143,7 @@ def rank_and_quota_records(
     max_per_source: int = 3,
     limit: int = 10,
     excluded_ids: Optional[Set[int]] = None,
+    user_interests: Optional[List[str]] = None,
 ) -> List[ExternalRecord]:
     """Score, rank, and quota records so no single source crowds out others."""
     pool = [r for r in records if not (excluded_ids and r.id in excluded_ids)]
@@ -137,7 +151,7 @@ def rank_and_quota_records(
         return []
 
     now = datetime.now(timezone.utc)
-    scored = [(r, compute_record_score(r, now=now)) for r in pool]
+    scored = [(r, compute_record_score(r, now=now, user_interests=user_interests)) for r in pool]
     # Sort descending by score
     scored.sort(key=lambda x: x[1], reverse=True)
 

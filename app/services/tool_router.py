@@ -35,6 +35,17 @@ from app.schemas.manifest import (
     SourceStatus,
     render_manifest_disclosure,
 )
+from app.memory.commands import (
+    handle_export,
+    handle_forget,
+    handle_forget_all,
+    handle_link,
+    handle_memory_debug,
+    handle_memory_overview,
+    handle_pin_unpin,
+    handle_privacy,
+)
+from app.memory.profile import get_user_profile_summary
 from app.services.extractor_service import ExtractorService, extractor_service
 from app.services.planner_service import PlannerService, planner_service
 from app.services.query_normalizer import normalize_query
@@ -329,9 +340,20 @@ class ToolRouter:
         self,
         user_message: str,
         previous_query: Optional[str] = None,
+        user_id: Optional[int] = None,
+        channel: str = "telegram",
+        sender_id: Optional[str] = None,
     ) -> ToolExecutionResult:
         """Analyze message, execute appropriate tool if needed, and return context."""
         clean_text = user_message.strip()
+
+        actual_user_id = user_id
+        if actual_user_id is None:
+            try:
+                from app.memory.identity import resolve_user_id
+                actual_user_id = resolve_user_id(channel=channel, external_user_id=sender_id or "default_user")
+            except Exception:
+                actual_user_id = 1
 
         # ----------------------------------------------------------------------
         # 1. Slash Commands Dispatch (Exact, 0 LLM Calls)
@@ -394,6 +416,89 @@ class ToolRouter:
                     status_message="Loading record diffs...",
                 )
 
+            # Memory Commands (ResponseMode.DIRECT, 0 LLM calls, < 50ms)
+            if cmd in ("memory", "memories"):
+                body = handle_memory_overview(actual_user_id)
+                return ToolExecutionResult(
+                    tool_name="memory",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message="Loading memory...",
+                )
+
+            if cmd == "pin":
+                body = handle_pin_unpin(actual_user_id, args, pin=True)
+                return ToolExecutionResult(
+                    tool_name="pin",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message=None,
+                )
+
+            if cmd == "unpin":
+                body = handle_pin_unpin(actual_user_id, args, pin=False)
+                return ToolExecutionResult(
+                    tool_name="unpin",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message=None,
+                )
+
+            if cmd == "forget":
+                body = handle_forget(actual_user_id, args)
+                return ToolExecutionResult(
+                    tool_name="forget",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message=None,
+                )
+
+            if cmd == "forget_all":
+                body = handle_forget_all(actual_user_id, args)
+                return ToolExecutionResult(
+                    tool_name="forget_all",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message=None,
+                )
+
+            if cmd == "export":
+                summary, json_doc = handle_export(actual_user_id)
+                return ToolExecutionResult(
+                    tool_name="export",
+                    mode=ResponseMode.DIRECT,
+                    direct=summary,
+                    input_value=json_doc,
+                    status_message="Exporting memory data...",
+                )
+
+            if cmd == "privacy":
+                body = handle_privacy()
+                return ToolExecutionResult(
+                    tool_name="privacy",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message=None,
+                )
+
+            if cmd == "link":
+                body = handle_link(actual_user_id, channel, sender_id or str(actual_user_id), args)
+                return ToolExecutionResult(
+                    tool_name="link",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message=None,
+                )
+
+            if cmd == "memory_debug":
+                body = handle_memory_debug(actual_user_id, args)
+                return ToolExecutionResult(
+                    tool_name="memory_debug",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message=None,
+                )
+
             if cmd not in ("briefing", "digest", "search", "read"):
                 unknown_msg = (
                     f"Unknown command <code>/{cmd}</code>.\n\n"
@@ -402,6 +507,12 @@ class ToolRouter:
                     f"• <code>/feeds</code> - Active RSS feed subscriptions\n"
                     f"• <code>/watches</code> - Monitored web pages & change alerts\n"
                     f"• <code>/briefing</code> - Daily intelligence briefing\n"
+                    f"• <code>/memory</code> - Long-term profile & memories\n"
+                    f"• <code>/forget &lt;id&gt;</code> - Delete a specific memory\n"
+                    f"• <code>/pin &lt;id&gt;</code> - Pin memory to core\n"
+                    f"• <code>/export</code> - Download personal memory export\n"
+                    f"• <code>/privacy</code> - Local memory & privacy policy\n"
+                    f"• <code>/link</code> - Link another channel identity\n"
                     f"• <code>/search &lt;query&gt;</code> - Web search\n"
                     f"• <code>/read &lt;url&gt;</code> - Read and extract webpage content"
                 )
@@ -514,8 +625,25 @@ class ToolRouter:
                         authenticated=False,
                     )
 
-                # Rank and enforce source quotas
-                ranked = rank_and_quota_records(all_candidates, max_per_source=3, limit=target_count)
+                user_interests: List[str] = []
+                if actual_user_id:
+                    try:
+                        prof = get_user_profile_summary(actual_user_id)
+                        raw_int = prof.get("interests") or prof.get("preferences") or []
+                        if isinstance(raw_int, str):
+                            user_interests = [i.strip() for i in raw_int.split(",") if i.strip()]
+                        elif isinstance(raw_int, list):
+                            user_interests = [str(i).strip() for i in raw_int if str(i).strip()]
+                    except Exception:
+                        pass
+
+                # Rank and enforce source quotas with personalization bias (0 LLM calls)
+                ranked = rank_and_quota_records(
+                    all_candidates,
+                    max_per_source=3,
+                    limit=target_count,
+                    user_interests=user_interests,
+                )
 
                 manifest = RetrievalManifest(
                     requested_count=target_count,

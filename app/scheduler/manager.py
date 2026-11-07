@@ -10,11 +10,14 @@ import inspect
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import config
 from app.scheduler.jobs import (
     job_check_monitored_websites,
+    job_memory_idle,
+    job_memory_nightly,
     job_sync_github_trending,
     job_sync_openalex_papers,
     job_sync_reddit_discussions,
@@ -94,8 +97,30 @@ class SchedulerManager:
             max_instances=1,
         )
 
+        # 6. Nightly Memory Tier Decay, Consolidation & Online Backup (03:00 IST / 21:30 UTC)
+        self.scheduler.add_job(
+            job_memory_nightly,
+            trigger=CronTrigger(hour=21, minute=30, timezone="UTC"),
+            id="memory_nightly_decay",
+            name="Nightly Memory Decay & Database Backup",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+
+        # 7. Idle Memory Consolidation (every 30m)
+        self.scheduler.add_job(
+            job_memory_idle,
+            trigger=IntervalTrigger(minutes=30),
+            id="memory_idle_consolidation",
+            name="Idle Memory Fact Consolidation",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+
         logger.info(
-            "Registered default background jobs | rss=%dm | github=%dh | openalex=%dh | reddit=%dh | monitoring=%dh",
+            "Registered default background jobs | rss=%dm | github=%dh | openalex=%dh | reddit=%dh | monitoring=%dh | memory_nightly=21:30UTC | memory_idle=30m",
             rss_mins,
             gh_hours,
             oa_hours,

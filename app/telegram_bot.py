@@ -140,12 +140,16 @@ def build_application() -> Application:
     application = builder.build()
 
     # Command handlers.
-    application.add_handler(CommandHandler("start", _start_command))
-    application.add_handler(CommandHandler("id", _start_command))
-    application.add_handler(CommandHandler("reset", _start_command))
-    application.add_handler(CommandHandler("status", _start_command))
-    application.add_handler(CommandHandler("search", _start_command))
-    application.add_handler(CommandHandler("read", _start_command))
+    for cmd in (
+        "start", "id", "reset", "status", "search", "read", "briefing", "digest",
+        "feeds", "subscriptions", "watches", "monitors", "diff", "versions",
+        "memory", "memories", "pin", "unpin", "forget", "forget_all",
+        "export", "privacy", "link", "memory_debug",
+    ):
+        application.add_handler(CommandHandler(cmd, _start_command))
+
+    # Catch-all for any other slash command
+    application.add_handler(MessageHandler(filters.COMMAND, _start_command))
 
     # Text message handler (non-command).
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _text_message))

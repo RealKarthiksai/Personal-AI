@@ -78,6 +78,22 @@ class Settings(BaseSettings):
     changedetection_api_key: Optional[str] = Field(default=None)
     monitoring_check_interval_hours: int = Field(default=2)
 
+    # --- Long-Term Memory Subsystem (Model-Agnostic Profile) ------------------
+    memory_context_tokens: int = Field(default=800)
+    memory_max_prompt_tokens: int = Field(default=2048)
+    memory_llm_extraction_enabled: bool = Field(default=True)
+    memory_llm_merge: bool = Field(default=False)
+    memory_grounding_min_overlap: float = Field(default=0.6)
+    memory_extraction_batch_size: int = Field(default=5)
+    memory_llm_timeout_s: int = Field(default=30)
+    memory_llm_max_retries: int = Field(default=2)
+    memory_embeddings_enabled: bool = Field(default=False)
+    memory_embedding_url: str = Field(default="")
+    memory_raw_retention_days: int = Field(default=2)
+    memory_backup_retention: int = Field(default=7)
+    memory_idle_extract_interval_minutes: int = Field(default=30)
+    memory_idle_inactivity_minutes: int = Field(default=30)
+
     # --------------------------------------------------------------------------
     @property
     def allowed_telegram_user_ids(self) -> List[int]:

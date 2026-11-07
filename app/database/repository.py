@@ -6,6 +6,7 @@ webhook delivery is guarded by a unique constraint on external_message_id.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -73,27 +74,52 @@ def create_message(
     timestamp: Optional[str] = None,
     status: str = "received",
     created_at: Optional[str] = None,
+    user_id: Optional[int] = None,
+    channel: Optional[str] = None,
 ) -> int:
     """Insert a message row and return its new id."""
     with transaction() as conn:
-        if created_at is not None:
-            cur = conn.execute(
-                """
-                INSERT INTO messages
-                    (external_message_id, sender_id, direction, text, timestamp, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (external_message_id, sender_id, direction, text, timestamp, status, created_at),
-            )
-        else:
-            cur = conn.execute(
-                """
-                INSERT INTO messages
-                    (external_message_id, sender_id, direction, text, timestamp, status)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (external_message_id, sender_id, direction, text, timestamp, status),
-            )
+        try:
+            if created_at is not None:
+                cur = conn.execute(
+                    """
+                    INSERT INTO messages
+                        (external_message_id, sender_id, direction, text, timestamp, status, created_at, user_id, channel)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (external_message_id, sender_id, direction, text, timestamp, status, created_at, user_id, channel),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO messages
+                        (external_message_id, sender_id, direction, text, timestamp, status, user_id, channel)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (external_message_id, sender_id, direction, text, timestamp, status, user_id, channel),
+                )
+        except sqlite3.OperationalError as exc:
+            if "no column named user_id" in str(exc):
+                if created_at is not None:
+                    cur = conn.execute(
+                        """
+                        INSERT INTO messages
+                            (external_message_id, sender_id, direction, text, timestamp, status, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (external_message_id, sender_id, direction, text, timestamp, status, created_at),
+                    )
+                else:
+                    cur = conn.execute(
+                        """
+                        INSERT INTO messages
+                            (external_message_id, sender_id, direction, text, timestamp, status)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (external_message_id, sender_id, direction, text, timestamp, status),
+                    )
+            else:
+                raise
         return int(cur.lastrowid)
 
 

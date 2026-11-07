@@ -60,6 +60,22 @@ class Config:
         self.changedetection_api_key = s.changedetection_api_key
         self.monitoring_check_interval_hours = s.monitoring_check_interval_hours
 
+        # Memory Subsystem
+        self.memory_context_tokens = s.memory_context_tokens
+        self.memory_max_prompt_tokens = s.memory_max_prompt_tokens
+        self.memory_llm_extraction_enabled = s.memory_llm_extraction_enabled
+        self.memory_llm_merge = s.memory_llm_merge
+        self.memory_grounding_min_overlap = s.memory_grounding_min_overlap
+        self.memory_extraction_batch_size = s.memory_extraction_batch_size
+        self.memory_llm_timeout_s = s.memory_llm_timeout_s
+        self.memory_llm_max_retries = s.memory_llm_max_retries
+        self.memory_embeddings_enabled = s.memory_embeddings_enabled
+        self.memory_embedding_url = s.memory_embedding_url
+        self.memory_raw_retention_days = s.memory_raw_retention_days
+        self.memory_backup_retention = s.memory_backup_retention
+        self.memory_idle_extract_interval_minutes = s.memory_idle_extract_interval_minutes
+        self.memory_idle_inactivity_minutes = s.memory_idle_inactivity_minutes
+
     def is_telegram_configured(self) -> bool:
         return bool(self.telegram_bot_token)
 

@@ -100,8 +100,17 @@ async def handle_command(
 ) -> dict:
     """Handle a Telegram command. Returns a result dict describing the outcome."""
     command = (update.command or "").lower()
+    base_cmd = command.split("@")[0]
 
-    if command in ("/search", "/read", "/briefing", "/digest"):
+    FORWARDED_COMMANDS = {
+        "/search", "/read", "/briefing", "/digest",
+        "/feeds", "/subscriptions", "/watches", "/monitors", "/diff", "/versions",
+        "/status",
+        "/memory", "/memories", "/pin", "/unpin", "/forget", "/forget_all",
+        "/export", "/privacy", "/link", "/memory_debug",
+    }
+
+    if base_cmd in FORWARDED_COMMANDS:
         if hasattr(sender, "send_chat_action"):
             await sender.send_chat_action(to=update.chat_id, action="typing")
         return await handle_text_message(
@@ -113,15 +122,27 @@ async def handle_command(
 
     if command == "/start":
         reply = (
-            "Welcome to Karna, your local AI assistant.\n\n"
-            "Commands:\n"
-            "/search <query> - search the live web\n"
-            "/read <url> - read and summarize a webpage\n"
-            "/briefing - get your daily intelligence digest from indexed feeds & sources\n"
-            "/status - show bot & tool connectivity status\n"
-            "/reset - clear conversation history\n"
-            "/id - show your Telegram user ID\n\n"
-            "Or ask any question naturally—web searches, URL reading, and briefings trigger automatically when needed."
+            "Welcome to Karna, your local AI companion.\n\n"
+            "🔍 <b>Tools & Research:</b>\n"
+            "/search &lt;query&gt; - search the live web\n"
+            "/read &lt;url&gt; - read and summarize a webpage\n"
+            "/briefing - daily intelligence digest from indexed feeds\n"
+            "/status - live system connectivity & ingestion status\n"
+            "/feeds - view subscribed RSS/Atom feeds\n"
+            "/watches - view monitored websites\n\n"
+            "🧠 <b>Memory & Profile:</b>\n"
+            "/memory - view your profile & active memories\n"
+            "/pin &lt;id&gt; - protect memory from time decay\n"
+            "/unpin &lt;id&gt; - allow normal decay\n"
+            "/forget &lt;id&gt; - permanently delete a memory\n"
+            "/forget_all - erase all memories and profile\n"
+            "/export - export all memories as JSON\n"
+            "/privacy - view data retention & privacy policy\n"
+            "/link - link identities across Telegram/WhatsApp/Web\n"
+            "/memory_debug &lt;query&gt; - preview context injected to model\n\n"
+            "⚙️ <b>System:</b>\n"
+            "/reset - clear conversation session\n"
+            "/id - show your Telegram user ID"
         )
         await sender.send_text(to=update.chat_id, text=reply)
         return {

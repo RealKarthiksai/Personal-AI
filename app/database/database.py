@@ -172,6 +172,111 @@ CREATE INDEX IF NOT EXISTS idx_record_versions_record_id
     ON record_versions (record_id, changed_at DESC);
 """
 
+MEMORY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    display_name TEXT,
+    timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+    locale TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS identities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel TEXT NOT NULL,
+    external_user_id TEXT NOT NULL,
+    verified INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(channel, external_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_identities_user ON identities(user_id);
+CREATE INDEX IF NOT EXISTS idx_identities_channel_ext ON identities(channel, external_user_id);
+
+CREATE TABLE IF NOT EXISTS link_codes (
+    code TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_link_codes_user ON link_codes(user_id);
+
+CREATE TABLE IF NOT EXISTS memories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tier TEXT NOT NULL CHECK (tier IN ('daily','weekly','monthly','yearly','core')),
+    period TEXT NOT NULL,
+    text TEXT NOT NULL,
+    importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 5),
+    confidence REAL NOT NULL DEFAULT 1.0,
+    category TEXT NOT NULL,
+    source TEXT NOT NULL CHECK (source IN ('explicit','rule','llm','merged')),
+    source_message_ids TEXT NOT NULL DEFAULT '[]',
+    source_snippet TEXT,
+    source_channels TEXT NOT NULL DEFAULT '[]',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    last_accessed_at TEXT,
+    superseded_by INTEGER REFERENCES memories(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memories_user_tier ON memories(user_id, tier);
+CREATE INDEX IF NOT EXISTS idx_memories_period ON memories(period);
+CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance);
+CREATE INDEX IF NOT EXISTS idx_memories_deleted ON memories(deleted_at);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+    memory_id UNINDEXED,
+    user_id UNINDEXED,
+    text,
+    category,
+    tokenize='porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_memories_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memories_fts(memory_id, user_id, text, category)
+    VALUES (new.id, new.user_id, new.text, new.category);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_memories_ad AFTER DELETE ON memories BEGIN
+    DELETE FROM memories_fts WHERE memory_id = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_memories_au AFTER UPDATE ON memories BEGIN
+    DELETE FROM memories_fts WHERE memory_id = old.id;
+    INSERT INTO memories_fts(memory_id, user_id, text, category)
+    VALUES (new.id, new.user_id, new.text, new.category);
+END;
+
+CREATE TABLE IF NOT EXISTS profile_fields (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    confirmed INTEGER NOT NULL DEFAULT 0,
+    source_memory_id INTEGER REFERENCES memories(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    history TEXT NOT NULL DEFAULT '[]',
+    UNIQUE(user_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_profile_fields_user ON profile_fields(user_id);
+
+CREATE TABLE IF NOT EXISTS memory_jobs_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    finished_at TEXT,
+    status TEXT NOT NULL,
+    stats TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_memory_jobs_job ON memory_jobs_log(job, started_at DESC);
+"""
+
 _init_lock: bool = False
 
 
@@ -213,15 +318,25 @@ def init_db() -> None:
         return
     with transaction() as conn:
         conn.executescript(SCHEMA)
+        conn.executescript(MEMORY_SCHEMA)
 
         # Migration: Add first_indexed_at & published_at_trusted to external_records if missing
-        cols = [r["name"] for r in conn.execute("PRAGMA table_info(external_records)").fetchall()]
-        if "first_indexed_at" not in cols:
+        cols_ext = [r["name"] for r in conn.execute("PRAGMA table_info(external_records)").fetchall()]
+        if "first_indexed_at" not in cols_ext:
             conn.execute("ALTER TABLE external_records ADD COLUMN first_indexed_at TEXT")
             conn.execute("ALTER TABLE external_records ADD COLUMN published_at_trusted INTEGER DEFAULT 0")
             conn.execute(
                 "UPDATE external_records SET first_indexed_at = COALESCE(fetched_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) WHERE first_indexed_at IS NULL"
             )
+
+        # Migration: Add user_id, channel, memory_processed_at to messages if missing
+        cols_msg = [r["name"] for r in conn.execute("PRAGMA table_info(messages)").fetchall()]
+        if "user_id" not in cols_msg:
+            conn.execute("ALTER TABLE messages ADD COLUMN user_id INTEGER REFERENCES users(id)")
+        if "channel" not in cols_msg:
+            conn.execute("ALTER TABLE messages ADD COLUMN channel TEXT")
+        if "memory_processed_at" not in cols_msg:
+            conn.execute("ALTER TABLE messages ADD COLUMN memory_processed_at TEXT")
 
         # Migration: Create delivered_items table for briefing deduplication
         conn.execute(

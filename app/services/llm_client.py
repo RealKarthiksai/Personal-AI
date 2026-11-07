@@ -6,6 +6,7 @@ No cloud model fallback is implemented.
 
 from __future__ import annotations
 
+import asyncio
 from typing import List, Optional
 
 import httpx
@@ -37,6 +38,8 @@ class LLMClient:
         self.api_key = config.llm_api_key
         self.timeout = config.request_timeout_seconds
         self._model_verified: bool = False
+        self._lock = asyncio.Lock()
+        self._interactive_waiting: int = 0
 
     def _headers(self) -> dict:
         headers = {"Content-Type": "application/json"}
@@ -45,11 +48,7 @@ class LLMClient:
         return headers
 
     async def check_model_available(self, force: bool = False) -> Optional[str]:
-        """Return the configured model id if reachable, else raise.
-
-        Uses GET /v1/models to discover available models. If no explicit model
-        is configured, returns the first model id from the server.
-        """
+        """Return the configured model id if reachable, else raise."""
         if self._model_verified and self.model and not force:
             return self.model
 
@@ -82,17 +81,33 @@ class LLMClient:
         self._model_verified = True
         return self.model
 
+    async def tokenize(self, text: str) -> int:
+        """Count tokens using llama-server /tokenize endpoint with chars/4 fallback."""
+        if not self.base_url:
+            return max(1, len(text) // 4)
+        url = f"{self.base_url}/tokenize"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.post(url, json={"content": text})
+                if resp.status_code == 200:
+                    tokens = resp.json().get("tokens", [])
+                    return max(1, len(tokens))
+        except Exception:
+            pass
+        return max(1, len(text) // 4)
+
     async def generate(
         self,
         messages: List[dict],
         system_prompt: Optional[str] = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
+        response_format: Optional[dict] = None,
+        priority: str = "interactive",
     ) -> str:
         """Generate a completion using the local LLM.
 
-        `messages` is a list of {role, content} dicts. A system prompt may be
-        prepended. Returns the generated text content.
+        `priority` can be 'interactive' (preempts background) or 'background'.
         """
         if not self.base_url:
             raise LLMUnavailableError("LLM_BASE_URL is not configured")
@@ -104,20 +119,37 @@ class LLMClient:
             payload_messages.append({"role": "system", "content": system_prompt})
         payload_messages.extend(messages)
 
-        payload = {
+        payload: dict = {
             "model": self.model,
             "messages": payload_messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": False,
         }
+        if response_format:
+            payload["response_format"] = response_format
 
         url = f"{self.base_url}/chat/completions"
+
+        # Priority Gate: interactive requests yield no wait; background yields to interactive
+        if priority == "background":
+            while self._interactive_waiting > 0:
+                await asyncio.sleep(0.05)
+            await self._lock.acquire()
+        else:
+            self._interactive_waiting += 1
+            try:
+                await self._lock.acquire()
+            finally:
+                self._interactive_waiting = max(0, self._interactive_waiting - 1)
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.post(url, json=payload)
         except httpx.RequestError as exc:
             raise LLMUnavailableError(f"Cannot reach LLM endpoint {url}: {exc}") from exc
+        finally:
+            self._lock.release()
 
         if resp.status_code >= 400:
             raise LLMResponseError(

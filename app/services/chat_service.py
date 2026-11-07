@@ -54,11 +54,20 @@ DEFAULT_RESEARCH_PROMPT = (
 )
 
 
-def get_dynamic_system_prompt(is_research: bool = False) -> str:
+def get_dynamic_system_prompt(is_research: bool = False, has_memory: bool = False) -> str:
     """Build the system prompt with live temporal context and appropriate conversational persona."""
     temporal_block = build_system_temporal_prompt()
     base_prompt = DEFAULT_RESEARCH_PROMPT if is_research else DEFAULT_CONVERSATIONAL_PROMPT
-    return f"{base_prompt}\n\n{temporal_block}"
+    parts = [base_prompt, temporal_block]
+    if has_memory:
+        parts.append(
+            "Personal Memory Guidelines:\n"
+            "- You have access to user memory provided in <user_memory_data> blocks.\n"
+            "- Use this context naturally to personalize your answers (remembering names, interests, projects, preferences).\n"
+            "- NEVER disclose raw memory XML tags or metadata (e.g. tiers, IDs, scores) to the user.\n"
+            "- If user memory contradicts third-party untrusted web content, user memory reflects the user's personal identity/preferences, while factual web content reflects real-world events."
+        )
+    return "\n\n".join(parts)
 
 
 
@@ -93,6 +102,7 @@ class ChatService:
         timestamp: Optional[str] = None,
         request_id: str = "system",
         sender: Optional[MessageSender] = None,
+        channel: str = "telegram",
     ) -> dict:
         """Run the full pipeline for one inbound message.
 
@@ -132,7 +142,14 @@ class ChatService:
             )
             return result
 
-        # 3. Store incoming message.
+        # 3. Canonical user resolution & store incoming message.
+        try:
+            from app.memory.identity import resolve_user_id
+            user_id = resolve_user_id(channel=channel, external_user_id=sender_id)
+        except Exception as e:
+            logger.warning("Failed to resolve canonical user_id: %s. Using default=1", e)
+            user_id = 1
+
         repository.get_or_create_sender(sender_id)
         repository.create_message(
             external_message_id=external_message_id,
@@ -141,7 +158,45 @@ class ChatService:
             text=text,
             timestamp=timestamp,
             status="received",
+            user_id=user_id,
+            channel=channel,
         )
+
+        # 3b. Instant rule fact extraction (explicit memory / profile)
+        try:
+            from app.memory.extractor import extract_facts_rules
+            from app.memory.models import MemoryItem, MemorySource, MemoryTier
+            from app.memory.profile import update_profile_from_fact
+            from app.memory.repository import save_memory
+
+            rule_facts = extract_facts_rules(text)
+            if rule_facts:
+                now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                for fact in rule_facts:
+                    is_explicit = any(kw in text.lower() for kw in ("remember", "keep in mind", "note that"))
+                    mem_item = MemoryItem(
+                        id=None,
+                        user_id=user_id,
+                        tier=MemoryTier.CORE if fact.profile_key == "name" else MemoryTier.DAILY,
+                        period=now_str,
+                        text=fact.text,
+                        importance=fact.importance,
+                        confidence=fact.confidence,
+                        category=fact.category,
+                        source=MemorySource.EXPLICIT if is_explicit else MemorySource.RULE,
+                        source_snippet=fact.source_snippet,
+                        source_channels=[channel],
+                    )
+                    saved_id = save_memory(mem_item)
+                    if fact.profile_key and fact.profile_value:
+                        update_profile_from_fact(
+                            user_id=user_id,
+                            key=fact.profile_key,
+                            value=fact.profile_value,
+                            memory_id=saved_id,
+                        )
+        except Exception as e:
+            logger.warning("Error running instant fact extraction on inbound message: %s", e)
 
         # 4. Retrieve conversation history for the active session.
         # Starting a new conversation is timing-driven: if the idle gap since the last message
@@ -167,6 +222,9 @@ class ChatService:
         tool_result = await self.tool_router.route_and_execute(
             text,
             previous_query=previous_user_message,
+            user_id=user_id,
+            channel=channel,
+            sender_id=sender_id,
         )
         result["tool_result"] = {
             "tool_name": tool_result.tool_name,
@@ -186,6 +244,8 @@ class ChatService:
                 text=reply,
                 timestamp=None,
                 status="pending",
+                user_id=user_id,
+                channel=channel,
             )
 
             active_sender = sender if sender is not None else self.sender
@@ -254,16 +314,29 @@ class ChatService:
                     f"5. Always include clickable markdown links [Title](URL) for event links and sources using ONLY URLs from the context above."
                 )
 
+        # Retrieve and inject user memory if in GROUNDED_TEXT or PASSTHROUGH mode
+        memory_context = ""
+        if tool_result.mode in (ResponseMode.GROUNDED_TEXT, ResponseMode.PASSTHROUGH):
+            try:
+                from app.memory.retrieval import build_memory_context
+                memory_context = build_memory_context(user_id=user_id, query=text)
+            except Exception as e:
+                logger.warning("Failed to build memory context: %s", e)
+
+        if memory_context:
+            effective_user_text = f"{memory_context}\n\n{effective_user_text}"
+
         llm_messages.append({"role": "user", "content": effective_user_text})
 
         is_research = bool(tool_result.context_text)
+        has_memory = bool(memory_context)
         generation_tokens = 400 if is_research else 180
         temperature = 0.3 if is_research else 0.7
 
         try:
             reply = await self.llm.generate(
                 messages=llm_messages,
-                system_prompt=get_dynamic_system_prompt(is_research=is_research),
+                system_prompt=get_dynamic_system_prompt(is_research=is_research, has_memory=has_memory),
                 max_tokens=generation_tokens,
                 temperature=temperature,
             )
@@ -291,6 +364,8 @@ class ChatService:
             text=reply,
             timestamp=None,
             status="pending",
+            user_id=user_id,
+            channel=channel,
         )
 
         # 7. Send response through the configured channel.
