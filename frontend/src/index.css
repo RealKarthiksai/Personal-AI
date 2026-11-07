@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-dark-bg text-dark-text;
+  }
+}
+
+@layer components {
+  .rounded-card {
+    border-radius: 0.75rem;
+  }
+}
+
+::selection {
+  @apply bg-amber-500/30 text-white;
+}

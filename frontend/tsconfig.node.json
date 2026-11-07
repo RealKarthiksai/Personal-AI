@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true
+  },
+  "include": ["vite.config.ts"]
+}
