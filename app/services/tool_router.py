@@ -11,7 +11,11 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from app.services.extractor_service import ExtractorService, extractor_service
+from app.services.query_normalizer import normalize_query
+from app.services.recursive_crawler import RecursiveCrawler, recursive_crawler
 from app.services.search_service import SearchService, search_service
+from app.services.source_verifier import SourceVerifier
+from app.services.structured_extractor import StructuredExtractor
 from app.utils.logging import get_logger
 
 logger = get_logger("app.tool_router")
@@ -25,7 +29,7 @@ SEARCH_PATTERNS = [
     r"^(?:can\s+you\s+|could\s+you\s+|please\s+|help\s+me\s+)?(?:find|search|look\s*up|google|check|get|tell\s+me\s+about|show\s+me)\s+(?:for\s+|out\s+)?(.+)",
     # Questions about current events, scores, weather, people, dates
     r"^(?:what\s+(?:is|are)\s+the\s+latest|who\s+won|what\s+happened\s+with|current\s+price\s+of|weather\s+in|news\s+about)\s+(.+)",
-    r".*\b(?:latest\s+version\s+of|recent\s+news\s+about|release\s+date\s+of|upcoming\s+events\s+in|hackathons\s+in)\s+(.+)",
+    r".*\b(?:latest\s+version\s+of|recent\s+news\s+about|release\s+date\s+of)\s+(.+)",
     r".*\b(?:search\s+the\s+web\s+for|search\s+online\s+for|search\s+for)\s+(.+)",
 ]
 
@@ -57,9 +61,16 @@ class ToolRouter:
         self,
         search_svc: Optional[SearchService] = None,
         extractor_svc: Optional[ExtractorService] = None,
+        crawler_svc: Optional[RecursiveCrawler] = None,
+        structured_extractor: Optional[StructuredExtractor] = None,
+        source_verifier: Optional[SourceVerifier] = None,
     ) -> None:
         self.search = search_svc or search_service
         self.extractor = extractor_svc or extractor_service
+        self.crawler = crawler_svc or recursive_crawler
+        self.structured_extractor = structured_extractor or StructuredExtractor()
+        self.source_verifier = source_verifier or SourceVerifier()
+
 
     def extract_urls(self, text: str) -> List[str]:
         """Extract HTTP/HTTPS URLs from the input text."""
@@ -135,6 +146,19 @@ class ToolRouter:
             try:
                 extracted = await self.extractor.extract(target_url)
                 context = self.extractor.format_for_llm(extracted)
+
+                # Attempt structured event extraction if relevant
+                if extracted.success and extracted.markdown:
+                    entities = await self.structured_extractor.extract_hackathons(
+                        extracted.markdown,
+                        source_url=target_url,
+                        use_model_fallback=False,
+                    )
+                    if entities:
+                        verified = self.source_verifier.verify_and_score(entities)
+                        struct_md = self.structured_extractor.format_for_llm(verified)
+                        context = f"{struct_md}\n\n{context}"
+
                 return ToolExecutionResult(
                     tool_name="web_extractor",
                     input_value=target_url,
@@ -151,35 +175,94 @@ class ToolRouter:
                 )
 
         # 2. Search intent check
-        search_query = self.detect_search_query(clean_text, previous_query=previous_query)
-        if search_query:
-            logger.info("ToolRouter: routing to SearchService | query=%r", search_query)
-            status_msg = f"🔍 Searching the web for: {search_query}..."
+        raw_search_query = self.detect_search_query(clean_text, previous_query=previous_query)
+        if raw_search_query:
+            norm_res = normalize_query(raw_search_query)
+            effective_query = norm_res.normalized
+            logger.info(
+                "ToolRouter: routing to SearchService | raw=%r | normalized=%r",
+                raw_search_query,
+                effective_query,
+            )
+            status_msg = f"🔍 Searching the web for: {effective_query}..."
             try:
-                results = await self.search.search(search_query)
-                context = self.search.format_for_llm(results)
+                results = await self.search.search(effective_query)
+                # If primary query yields few results, expand query
+                if len(results) < 3 and norm_res.expanded_queries:
+                    extra_results = await self.search.search(norm_res.expanded_queries[0])
+                    seen_urls = {r.url for r in results}
+                    for item in extra_results:
+                        if item.url not in seen_urls:
+                            results.append(item)
+                            seen_urls.add(item.url)
+
+                search_context = self.search.format_for_llm(results)
+
+                # 3. Deep crawl & Structured Extraction for event/hackathon queries
+                is_event_query = (
+                    norm_res.intent in ("hackathons", "events")
+                    or any(k in effective_query.lower() for k in ("hackathon", "hackathons", "event", "events", "competition"))
+                )
+                if is_event_query and results:
+                    candidate_urls = [r.url for r in results[:2] if r.url]
+                    extracted_events = []
+                    for cand_url in candidate_urls:
+                        try:
+                            crawl_bundle = await self.crawler.deep_crawl(
+                                cand_url,
+                                intent_keywords=norm_res.intent_keywords,
+                            )
+                            if crawl_bundle.seed_content and crawl_bundle.seed_content.markdown:
+                                events = await self.structured_extractor.extract_hackathons(
+                                    crawl_bundle.seed_content.markdown,
+                                    source_url=crawl_bundle.seed_url,
+                                    use_model_fallback=False,
+                                )
+                                extracted_events.extend(events)
+                            for child in crawl_bundle.child_pages:
+                                if child.markdown:
+                                    child_events = await self.structured_extractor.extract_hackathons(
+                                        child.markdown,
+                                        source_url=child.url,
+                                        use_model_fallback=False,
+                                    )
+                                    extracted_events.extend(child_events)
+                        except Exception as crawl_exc:
+                            logger.warning("Deep crawl error for %s: %s", cand_url, crawl_exc)
+
+                    if extracted_events:
+                        filter_expired = any(w in clean_text.lower() for w in ("this month", "upcoming", "now", "today", "current"))
+                        verified_events = self.source_verifier.verify_and_score(
+                            extracted_events,
+                            filter_expired=filter_expired,
+                        )
+                        if verified_events:
+                            struct_md = self.structured_extractor.format_for_llm(verified_events)
+                            search_context = f"{struct_md}\n\n### Web Sources:\n{search_context}"
+
                 return ToolExecutionResult(
                     tool_name="searxng_search",
-                    input_value=search_query,
-                    context_text=context,
+                    input_value=effective_query,
+                    context_text=search_context,
                     status_message=status_msg,
                 )
             except Exception as exc:
                 logger.error("ToolRouter search failed: %s", exc)
                 return ToolExecutionResult(
                     tool_name="searxng_search",
-                    input_value=search_query,
+                    input_value=effective_query,
                     context_text=f"Web search unavailable: {exc}",
                     status_message=status_msg,
                 )
 
-        # 3. Direct pass-through (no tool needed)
+        # 4. Direct pass-through (no tool needed)
         return ToolExecutionResult(
             tool_name=None,
             input_value=None,
             context_text=None,
             status_message=None,
         )
+
 
 
 tool_router = ToolRouter()

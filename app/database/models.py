@@ -43,6 +43,7 @@ class ExtractedContent:
     markdown: str
     success: bool = True
     error: Optional[str] = None
+    raw_html: Optional[str] = None
 
 
 @dataclass

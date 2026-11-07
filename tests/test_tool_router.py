@@ -90,3 +90,49 @@ async def test_route_direct(router, mock_search_svc, mock_extractor_svc):
     assert res.context_text is None
     mock_search_svc.search.assert_not_awaited()
     mock_extractor_svc.extract.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_route_to_search_with_event_deep_crawl(mock_search_svc, mock_extractor_svc):
+    mock_search_svc.search.return_value = [
+        SearchResult(title="Unstop Hackathons", url="https://unstop.com/hackathons/hyd", snippet="Top hackathons")
+    ]
+    mock_search_svc.format_for_llm = MagicMock(return_value="Search snippets")
+
+    mock_crawler = AsyncMock()
+    from app.services.recursive_crawler import DeepCrawlResult
+    from app.schemas.entities import Hackathon
+
+    mock_crawler.deep_crawl.return_value = DeepCrawlResult(
+        seed_url="https://unstop.com/hackathons/hyd",
+        seed_content=ExtractedContent(
+            url="https://unstop.com/hackathons/hyd",
+            title="Unstop Hackathons",
+            markdown="| Event | Date | Location |\n|---|---|---|\n| TechFest 2026 | Nov 25, 2026 | Hyderabad |",
+            success=True,
+        ),
+    )
+
+    mock_extractor = AsyncMock()
+    mock_extractor.extract_hackathons.return_value = [
+        Hackathon(
+            name="TechFest 2026",
+            event_date="Nov 25, 2026",
+            location="Hyderabad",
+            source_url="https://unstop.com/hackathons/hyd",
+        )
+    ]
+    mock_extractor.format_for_llm = MagicMock(return_value="### Verified Hackathons:\n- TechFest 2026")
+
+    router = ToolRouter(
+        search_svc=mock_search_svc,
+        extractor_svc=mock_extractor_svc,
+        crawler_svc=mock_crawler,
+        structured_extractor=mock_extractor,
+    )
+
+    res = await router.route_and_execute("hackathons in hyd this month")
+    assert res.tool_name == "searxng_search"
+    assert "TechFest 2026" in res.context_text
+    mock_crawler.deep_crawl.assert_awaited_once()
+

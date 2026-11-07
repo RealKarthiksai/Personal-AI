@@ -23,6 +23,7 @@ from __future__ import annotations
 from typing import List, Optional, Protocol
 
 from app.config import config
+from app.context.temporal import build_system_temporal_prompt
 from app.database import repository
 from app.services.llm_client import LLMClient, LLMClientError
 from app.services.tool_router import ToolRouter, tool_router as default_tool_router
@@ -35,6 +36,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "Answer in the user's language. Keep replies direct, brief, and conversational (1 to 3 sentences). "
     "When web context or search results are provided, use them to give accurate, factual answers with citations."
 )
+
+
+def get_dynamic_system_prompt() -> str:
+    """Build the system prompt with live temporal context and rules."""
+    temporal_block = build_system_temporal_prompt()
+    return f"{DEFAULT_SYSTEM_PROMPT}\n\n{temporal_block}"
 
 
 class MessageSender(Protocol):
@@ -149,7 +156,9 @@ class ChatService:
                 f"{text}\n\n"
                 f"[Web Context]:\n"
                 f"{tool_result.context_text}\n\n"
-                f"Answer in 1 to 2 direct sentences using the web context above. Include source link."
+                f"Instructions: Use the factual Web Context above to provide a clear, direct, and factual answer. "
+                f"If discussing events or hackathons, only present active or upcoming ones with their exact dates, location, and source link. "
+                f"Do not present past or expired events as upcoming."
             )
 
         if not llm_messages or llm_messages[-1]["content"] != text:
@@ -161,9 +170,9 @@ class ChatService:
         try:
             reply = await self.llm.generate(
                 messages=llm_messages,
-                system_prompt=DEFAULT_SYSTEM_PROMPT,
-                max_tokens=120,
-                temperature=0.6,
+                system_prompt=get_dynamic_system_prompt(),
+                max_tokens=256,
+                temperature=0.4,
             )
         except LLMClientError as exc:
             result["error"] = f"llm error: {exc}"

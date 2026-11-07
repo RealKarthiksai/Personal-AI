@@ -190,3 +190,76 @@ def log_tool_execution(
             (tool_name, input_data[:1000], output_summary[:1000], duration_ms),
         )
         return int(cursor.lastrowid or 0)
+
+
+def save_extracted_entity(
+    entity_type: str,
+    name: str,
+    structured_data: str,
+    source_url: str,
+    content_hash: Optional[str] = None,
+) -> int:
+    """Insert an extracted entity record (e.g. hackathon, event) into the database."""
+    with transaction() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO extracted_entities
+                (entity_type, name, structured_data, source_url, content_hash, extracted_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (entity_type, name, structured_data, source_url, content_hash),
+        )
+        return int(cur.lastrowid or 0)
+
+
+def get_entities_by_type(entity_type: str, limit: int = 20) -> List[dict]:
+    """Retrieve recently extracted entities of a given type."""
+    with transaction() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, entity_type, name, structured_data, source_url, content_hash, extracted_at
+            FROM extracted_entities
+            WHERE entity_type = ?
+            ORDER BY extracted_at DESC, id DESC
+            LIMIT ?
+            """,
+            (entity_type, limit),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "entity_type": row["entity_type"],
+                "name": row["name"],
+                "structured_data": row["structured_data"],
+                "source_url": row["source_url"],
+                "content_hash": row["content_hash"],
+                "extracted_at": row["extracted_at"],
+            }
+            for row in rows
+        ]
+
+
+def find_entity_by_name(entity_type: str, name: str) -> Optional[dict]:
+    """Look up an extracted entity by type and exact or partial name."""
+    with transaction() as conn:
+        row = conn.execute(
+            """
+            SELECT id, entity_type, name, structured_data, source_url, content_hash, extracted_at
+            FROM extracted_entities
+            WHERE entity_type = ? AND name LIKE ?
+            ORDER BY extracted_at DESC
+            LIMIT 1
+            """,
+            (entity_type, f"%{name}%"),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "entity_type": row["entity_type"],
+            "name": row["name"],
+            "structured_data": row["structured_data"],
+            "source_url": row["source_url"],
+            "content_hash": row["content_hash"],
+            "extracted_at": row["extracted_at"],
+        }

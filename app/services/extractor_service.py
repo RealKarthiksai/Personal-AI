@@ -77,6 +77,16 @@ class ExtractorService:
             raise ExtractorServiceError(f"HTTP {resp.status_code} fetching {url}")
 
         soup = BeautifulSoup(resp.text, "html.parser")
+
+        # Convert HTML tables to Markdown before decomposing
+        from app.services.recursive_crawler import table_to_markdown
+        table_markdowns: list[str] = []
+        for tbl in soup.find_all("table"):
+            t_md = table_to_markdown(tbl)
+            if t_md and len(t_md) > 20:
+                table_markdowns.append(t_md)
+            tbl.decompose()
+
         # Remove script, style, nav, footer
         for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
             tag.decompose()
@@ -90,6 +100,9 @@ class ExtractorService:
             if txt and len(txt) > 20:
                 text_parts.append(txt)
 
+        if table_markdowns:
+            text_parts.append("### Extracted Tables:\n" + "\n\n".join(table_markdowns))
+
         text = "\n\n".join(text_parts)
         if not text:
             text = soup.get_text(separator="\n", strip=True)
@@ -99,6 +112,7 @@ class ExtractorService:
             title=title,
             markdown=text[: self.max_chars],
             success=True,
+            raw_html=resp.text,
         )
 
     async def _extract_crawl4ai(self, url: str) -> ExtractedContent:
@@ -128,6 +142,7 @@ class ExtractorService:
                 title=title or url,
                 markdown=markdown,
                 success=True,
+                raw_html=getattr(result, "html", None),
             )
 
     async def extract(self, url: str, use_cache: bool = True) -> ExtractedContent:

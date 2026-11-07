@@ -65,12 +65,24 @@ CREATE TABLE IF NOT EXISTS tool_logs (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS extracted_entities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    structured_data TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    content_hash TEXT,
+    extracted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_search_cache_created
     ON search_cache (created_at);
 CREATE INDEX IF NOT EXISTS idx_page_cache_created
     ON page_cache (created_at);
 CREATE INDEX IF NOT EXISTS idx_tool_logs_tool
     ON tool_logs (tool_name, created_at);
+CREATE INDEX IF NOT EXISTS idx_entities_type_name
+    ON extracted_entities (entity_type, name);
 """
 
 _init_lock: bool = False
