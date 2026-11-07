@@ -7,3 +7,5 @@ python-dotenv==1.2.4
 python-telegram-bot==22.8
 crawl4ai==0.9.5
 playwright==1.64.1
+feedparser>=6.0.11
+APScheduler>=3.11.0,<4.0.0

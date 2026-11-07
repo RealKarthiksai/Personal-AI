@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     reddit_client_secret: Optional[str] = Field(default=None)
     reddit_user_agent: str = Field(default="PersonalAI/1.0")
     openalex_email: Optional[str] = Field(default=None)
+    rsshub_base_url: str = Field(default="https://rsshub.app")
 
     # --------------------------------------------------------------------------
     @property

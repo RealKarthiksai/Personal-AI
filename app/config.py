@@ -46,6 +46,7 @@ class Config:
         self.reddit_client_secret = s.reddit_client_secret
         self.reddit_user_agent = s.reddit_user_agent
         self.openalex_email = s.openalex_email
+        self.rsshub_base_url = s.rsshub_base_url
 
     def is_telegram_configured(self) -> bool:
         return bool(self.telegram_bot_token)
