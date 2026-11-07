@@ -32,16 +32,22 @@ from app.utils.logging import get_logger
 logger = get_logger("app.chat_service")
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful, concise assistant replying over a messaging app. "
-    "Answer in the user's language. Keep replies direct, brief, and conversational (1 to 3 sentences). "
-    "When web context or search results are provided, use them to give accurate, factual answers with citations."
+    "You are Karna, an intelligent, highly capable personal AI assistant. "
+    "Provide well-structured, elegant, and clearly formatted responses similar to modern AI assistants like ChatGPT and Gemini.\n\n"
+    "Formatting Guidelines:\n"
+    "- Structure: Begin with a direct summary or executive answer.\n"
+    "- Presentation: For events, comparisons, or multi-attribute data, use clean Markdown tables or structured bullet points with bold field names.\n"
+    "- Key Deadlines: Clearly call out urgent dates, registration deadlines, or requirements.\n"
+    "- Links & Citations: Always include direct, clickable markdown links [Title](URL) for sources and registrations.\n"
+    "- Tone: Clear, professional, informative, and beautifully formatted with markdown."
 )
 
 
 def get_dynamic_system_prompt() -> str:
-    """Build the system prompt with live temporal context and rules."""
+    """Build the system prompt with live temporal context, rules, and presentation style."""
     temporal_block = build_system_temporal_prompt()
     return f"{DEFAULT_SYSTEM_PROMPT}\n\n{temporal_block}"
+
 
 
 class MessageSender(Protocol):
@@ -154,11 +160,13 @@ class ChatService:
         if tool_result.context_text:
             effective_user_text = (
                 f"{text}\n\n"
-                f"[Web Context]:\n"
+                f"[Factual Research Context]:\n"
                 f"{tool_result.context_text}\n\n"
-                f"Instructions: Use the factual Web Context above to provide a clear, direct, and factual answer. "
-                f"If discussing events or hackathons, only present active or upcoming ones with their exact dates, location, and source link. "
-                f"Do not present past or expired events as upcoming."
+                f"Instructions:\n"
+                f"1. Synthesize the research context above to directly address the user request.\n"
+                f"2. Format your response beautifully (like ChatGPT/Gemini): start with an executive summary, follow with structured details (use a Markdown table or bold cards for dates, venue, prizes), and highlight key deadlines.\n"
+                f"3. Only mention active or upcoming events; do not present expired events as upcoming.\n"
+                f"4. Always include clickable markdown links [Title](URL) for event links and sources."
             )
 
         if not llm_messages or llm_messages[-1]["content"] != text:
@@ -171,8 +179,8 @@ class ChatService:
             reply = await self.llm.generate(
                 messages=llm_messages,
                 system_prompt=get_dynamic_system_prompt(),
-                max_tokens=256,
-                temperature=0.4,
+                max_tokens=450,
+                temperature=0.3,
             )
         except LLMClientError as exc:
             result["error"] = f"llm error: {exc}"

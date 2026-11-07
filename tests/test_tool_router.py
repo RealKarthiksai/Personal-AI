@@ -34,8 +34,26 @@ def mock_extractor_svc():
 
 
 @pytest.fixture
-def router(mock_search_svc, mock_extractor_svc):
-    return ToolRouter(search_svc=mock_search_svc, extractor_svc=mock_extractor_svc)
+def mock_planner_svc():
+    from app.services.planner_service import SearchPlan
+    planner = AsyncMock()
+    planner.plan_tasks.return_value = SearchPlan(
+        requires_search=True,
+        task_summary="fast web scraping",
+        search_queries=["fast web scraping"],
+        required_details=["techniques", "libraries"],
+    )
+    return planner
+
+
+@pytest.fixture
+def router(mock_search_svc, mock_extractor_svc, mock_planner_svc):
+    return ToolRouter(
+        search_svc=mock_search_svc,
+        extractor_svc=mock_extractor_svc,
+        planner_svc=mock_planner_svc,
+    )
+
 
 
 def test_url_detection(router):
@@ -69,8 +87,9 @@ def test_detect_read_url(router):
 async def test_route_to_search(router, mock_search_svc):
     res = await router.route_and_execute("search for fast web scraping")
     assert res.tool_name == "searxng_search"
-    assert res.input_value == "fast web scraping"
-    assert res.context_text == "Formatted Search Results"
+    assert "fast web scraping" in res.input_value
+    assert "Formatted Search Results" in res.context_text
+    assert "Research Plan" in res.context_text
     mock_search_svc.search.assert_awaited_once_with("fast web scraping")
 
 
@@ -84,12 +103,16 @@ async def test_route_to_extractor(router, mock_extractor_svc):
 
 
 @pytest.mark.asyncio
-async def test_route_direct(router, mock_search_svc, mock_extractor_svc):
+async def test_route_direct(router, mock_search_svc, mock_extractor_svc, mock_planner_svc):
+    from app.services.planner_service import SearchPlan
+    mock_planner_svc.plan_tasks.return_value = SearchPlan(requires_search=False)
+
     res = await router.route_and_execute("Tell me a joke about computers")
     assert res.tool_name is None
     assert res.context_text is None
     mock_search_svc.search.assert_not_awaited()
     mock_extractor_svc.extract.assert_not_awaited()
+
 
 
 @pytest.mark.asyncio

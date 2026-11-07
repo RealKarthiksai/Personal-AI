@@ -28,8 +28,11 @@ POSITIVE_KEYWORDS = [
 NEGATIVE_URL_PATTERNS = [
     "/privacy", "/terms", "/cookie", "/login", "/signin", "/signup",
     "/contact", "/about", "/careers", "/jobs", "/press", "/sponsor",
-    "facebook.com", "twitter.com", "x.com", "instagram.com", "linkedin.com"
+    "facebook.com", "twitter.com", "x.com", "instagram.com", "linkedin.com",
+    ".ics", ".vcf", ".zip", ".tar", ".gz", ".pdf", ".png", ".jpg", ".jpeg",
+    "calendar.google.com", "google.com/calendar",
 ]
+
 
 
 @dataclass

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from app.services.extractor_service import ExtractorService, extractor_service
+from app.services.planner_service import PlannerService, planner_service
 from app.services.query_normalizer import normalize_query
 from app.services.recursive_crawler import RecursiveCrawler, recursive_crawler
 from app.services.search_service import SearchService, search_service
@@ -64,12 +65,15 @@ class ToolRouter:
         crawler_svc: Optional[RecursiveCrawler] = None,
         structured_extractor: Optional[StructuredExtractor] = None,
         source_verifier: Optional[SourceVerifier] = None,
+        planner_svc: Optional[PlannerService] = None,
     ) -> None:
         self.search = search_svc or search_service
         self.extractor = extractor_svc or extractor_service
         self.crawler = crawler_svc or recursive_crawler
         self.structured_extractor = structured_extractor or StructuredExtractor()
         self.source_verifier = source_verifier or SourceVerifier()
+        self.planner = planner_svc or planner_service
+
 
 
     def extract_urls(self, text: str) -> List[str]:
@@ -174,43 +178,46 @@ class ToolRouter:
                     status_message=status_msg,
                 )
 
-        # 2. Search intent check
-        raw_search_query = self.detect_search_query(clean_text, previous_query=previous_query)
-        if raw_search_query:
-            norm_res = normalize_query(raw_search_query)
-            effective_query = norm_res.normalized
-            logger.info(
-                "ToolRouter: routing to SearchService | raw=%r | normalized=%r",
-                raw_search_query,
-                effective_query,
-            )
-            status_msg = f"🔍 Searching the web for: {effective_query}..."
+        # 2. Search intent & plan generation via PlannerService
+        plan = await self.planner.plan_tasks(clean_text, previous_query=previous_query)
+        if plan.requires_search and plan.search_queries:
+            status_msg = f"🔍 Researching: {plan.task_summary}..."
+            logger.info("ToolRouter: executing plan | task=%r | queries=%r", plan.task_summary, plan.search_queries)
             try:
-                results = await self.search.search(effective_query)
-                # If primary query yields few results, expand query
-                if len(results) < 3 and norm_res.expanded_queries:
-                    extra_results = await self.search.search(norm_res.expanded_queries[0])
-                    seen_urls = {r.url for r in results}
-                    for item in extra_results:
-                        if item.url not in seen_urls:
-                            results.append(item)
-                            seen_urls.add(item.url)
+                import asyncio
 
-                search_context = self.search.format_for_llm(results)
+                # Execute all planned search queries concurrently
+                tasks = [self.search.search(q) for q in plan.search_queries]
+                search_results_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+                results = []
+                seen_urls = set()
+                for res in search_results_list:
+                    if isinstance(res, list):
+                        for r in res:
+                            if r.url and r.url not in seen_urls:
+                                results.append(r)
+                                seen_urls.add(r.url)
+
+                search_context = self.search.format_for_llm(results[:8])
 
                 # 3. Deep crawl & Structured Extraction for event/hackathon queries
-                is_event_query = (
-                    norm_res.intent in ("hackathons", "events")
-                    or any(k in effective_query.lower() for k in ("hackathon", "hackathons", "event", "events", "competition"))
+                combined_query_str = (plan.task_summary + " " + " ".join(plan.search_queries)).lower()
+                is_event_query = any(
+                    k in combined_query_str
+                    for k in ("hackathon", "hackathons", "competition", "event", "events", "meetup")
                 )
                 if is_event_query and results:
                     candidate_urls = [r.url for r in results[:2] if r.url]
                     extracted_events = []
+                    intent_keywords = [
+                        w.lower() for w in re.split(r"\W+", plan.task_summary) if len(w) > 2
+                    ]
                     for cand_url in candidate_urls:
                         try:
                             crawl_bundle = await self.crawler.deep_crawl(
                                 cand_url,
-                                intent_keywords=norm_res.intent_keywords,
+                                intent_keywords=intent_keywords,
                             )
                             if crawl_bundle.seed_content and crawl_bundle.seed_content.markdown:
                                 events = await self.structured_extractor.extract_hackathons(
@@ -240,17 +247,26 @@ class ToolRouter:
                             struct_md = self.structured_extractor.format_for_llm(verified_events)
                             search_context = f"{struct_md}\n\n### Web Sources:\n{search_context}"
 
+                # Prepend task plan summary to context
+                req_details_str = ", ".join(plan.required_details) if plan.required_details else "Factual details and links"
+                research_plan_header = (
+                    f"### Research Plan:\n"
+                    f"- Objective: {plan.task_summary}\n"
+                    f"- Required Attributes: {req_details_str}"
+                )
+                search_context = f"{research_plan_header}\n\n{search_context}"
+
                 return ToolExecutionResult(
                     tool_name="searxng_search",
-                    input_value=effective_query,
+                    input_value=plan.task_summary,
                     context_text=search_context,
                     status_message=status_msg,
                 )
             except Exception as exc:
-                logger.error("ToolRouter search failed: %s", exc)
+                logger.error("ToolRouter search execution failed: %s", exc)
                 return ToolExecutionResult(
                     tool_name="searxng_search",
-                    input_value=effective_query,
+                    input_value=plan.task_summary,
                     context_text=f"Web search unavailable: {exc}",
                     status_message=status_msg,
                 )
