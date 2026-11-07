@@ -17,6 +17,7 @@ from app.integrations.github import github_router
 from app.integrations.openalex import openalex_router
 from app.integrations.reddit import reddit_router
 from app.integrations.rss import rss_router
+from app.integrations.monitoring import monitoring_router
 from app.scheduler import scheduler_manager, scheduler_router
 from app.config import config
 from app.database import database
@@ -40,6 +41,7 @@ app.include_router(github_router)
 app.include_router(openalex_router)
 app.include_router(reddit_router)
 app.include_router(rss_router)
+app.include_router(monitoring_router)
 app.include_router(scheduler_router)
 
 

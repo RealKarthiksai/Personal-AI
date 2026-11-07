@@ -138,3 +138,34 @@ async def job_sync_reddit_discussions() -> Dict[str, Any]:
             started_at=start_time,
         )
         return {"error": str(exc), "inserted": 0, "updated": 0}
+
+
+async def job_check_monitored_websites() -> Dict[str, Any]:
+    """Check all registered website watches for content changes."""
+    from app.integrations.monitoring.service import monitoring_service
+
+    start_time = datetime.now(timezone.utc).isoformat()
+    logger.info("Starting scheduled website change monitoring check")
+    try:
+        summary = await monitoring_service.check_all_watches()
+        log_ingestion_run(
+            source="monitoring",
+            status="success",
+            records_ingested=summary.get("changes_detected", 0),
+            started_at=start_time,
+        )
+        logger.info(
+            "Scheduled monitoring check completed | watches=%d | changes=%d",
+            summary.get("total_watches", 0),
+            summary.get("changes_detected", 0),
+        )
+        return summary
+    except Exception as exc:
+        logger.error("Scheduled monitoring check failed: %s", exc)
+        log_ingestion_run(
+            source="monitoring",
+            status="error",
+            error_message=str(exc),
+            started_at=start_time,
+        )
+        return {"error": str(exc), "total_watches": 0, "changes_detected": 0}

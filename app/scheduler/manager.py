@@ -14,6 +14,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import config
 from app.scheduler.jobs import (
+    job_check_monitored_websites,
     job_sync_github_trending,
     job_sync_openalex_papers,
     job_sync_reddit_discussions,
@@ -81,12 +82,25 @@ class SchedulerManager:
             max_instances=1,
         )
 
+        # 5. Website Change Monitoring Check
+        mon_hours = max(1, config.monitoring_check_interval_hours)
+        self.scheduler.add_job(
+            job_check_monitored_websites,
+            trigger=IntervalTrigger(hours=mon_hours),
+            id="website_monitoring_check",
+            name="Website Differential Change Monitor",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+
         logger.info(
-            "Registered default background jobs | rss=%dm | github=%dh | openalex=%dh | reddit=%dh",
+            "Registered default background jobs | rss=%dm | github=%dh | openalex=%dh | reddit=%dh | monitoring=%dh",
             rss_mins,
             gh_hours,
             oa_hours,
             rd_hours,
+            mon_hours,
         )
 
     def start(self) -> None:

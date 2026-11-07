@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     openalex_sync_interval_hours: int = Field(default=12)
     reddit_sync_interval_hours: int = Field(default=4)
 
+    # --- Monitoring (ChangeDetection.io) -------------------------------------
+    changedetection_base_url: Optional[str] = Field(default=None)
+    changedetection_api_key: Optional[str] = Field(default=None)
+    monitoring_check_interval_hours: int = Field(default=2)
+
     # --------------------------------------------------------------------------
     @property
     def allowed_telegram_user_ids(self) -> List[int]:

@@ -55,6 +55,11 @@ class Config:
         self.openalex_sync_interval_hours = s.openalex_sync_interval_hours
         self.reddit_sync_interval_hours = s.reddit_sync_interval_hours
 
+        # Monitoring
+        self.changedetection_base_url = s.changedetection_base_url
+        self.changedetection_api_key = s.changedetection_api_key
+        self.monitoring_check_interval_hours = s.monitoring_check_interval_hours
+
     def is_telegram_configured(self) -> bool:
         return bool(self.telegram_bot_token)
 
@@ -63,6 +68,9 @@ class Config:
 
     def is_searxng_configured(self) -> bool:
         return bool(self.searxng_base_url)
+
+    def is_changedetection_configured(self) -> bool:
+        return bool(self.changedetection_base_url)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging only, secrets masked
         return (
