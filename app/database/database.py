@@ -83,6 +83,93 @@ CREATE INDEX IF NOT EXISTS idx_tool_logs_tool
     ON tool_logs (tool_name, created_at);
 CREATE INDEX IF NOT EXISTS idx_entities_type_name
     ON extracted_entities (entity_type, name);
+
+CREATE TABLE IF NOT EXISTS sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    source_type TEXT NOT NULL,
+    base_url TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS external_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    record_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    description TEXT,
+    published_at TEXT,
+    updated_at TEXT,
+    fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}',
+    content_hash TEXT,
+    UNIQUE(source, source_id)
+);
+
+CREATE TABLE IF NOT EXISTS record_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id INTEGER NOT NULL REFERENCES external_records(id) ON DELETE CASCADE,
+    title TEXT,
+    description TEXT,
+    metadata TEXT,
+    content_hash TEXT,
+    changed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS feed_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL UNIQUE,
+    title TEXT,
+    category TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_fetched_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS monitor_watches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    watch_id TEXT UNIQUE,
+    url TEXT NOT NULL,
+    title TEXT,
+    last_checked_at TEXT,
+    last_changed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS ingestion_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    records_ingested INTEGER NOT NULL DEFAULT 0,
+    records_updated INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS notification_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel TEXT NOT NULL DEFAULT 'telegram',
+    recipient_id TEXT NOT NULL,
+    message_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sent_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_external_records_source_type
+    ON external_records (source, record_type);
+CREATE INDEX IF NOT EXISTS idx_external_records_published
+    ON external_records (published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_records_fetched
+    ON external_records (fetched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_records_url
+    ON external_records (url);
+CREATE INDEX IF NOT EXISTS idx_record_versions_record_id
+    ON record_versions (record_id, changed_at DESC);
 """
 
 _init_lock: bool = False

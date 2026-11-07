@@ -11,6 +11,7 @@ import logging
 from fastapi import FastAPI
 
 from app.api.routes import health as health_module
+from app.api.routes import ingestion as ingestion_module
 from app.api.routes import tools as tools_module
 from app.config import config
 from app.database import database
@@ -29,6 +30,7 @@ app = FastAPI(
 # Include routers.
 app.include_router(health_module.router)
 app.include_router(tools_module.router)
+app.include_router(ingestion_module.router)
 
 
 @app.on_event("startup")
