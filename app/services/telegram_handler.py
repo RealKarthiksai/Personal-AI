@@ -101,14 +101,26 @@ async def handle_command(
     """Handle a Telegram command. Returns a result dict describing the outcome."""
     command = (update.command or "").lower()
 
+    if command in ("/search", "/read"):
+        if hasattr(sender, "send_chat_action"):
+            await sender.send_chat_action(to=update.chat_id, action="typing")
+        return await handle_text_message(
+            update=update,
+            service=service,
+            sender=sender,
+            request_id=request_id,
+        )
+
     if command == "/start":
         reply = (
-            "Welcome to Karna, your local AI chatbot.\n"
+            "Welcome to Karna, your local AI assistant.\n\n"
             "Commands:\n"
-            "/id - show your Telegram user ID\n"
-            "/reset - clear your conversation history\n"
-            "/status - show bot status\n"
-            "Just send me any text message to chat with the local LLM."
+            "/search <query> - search the live web\n"
+            "/read <url> - read and summarize a webpage\n"
+            "/status - show bot & tool connectivity status\n"
+            "/reset - clear conversation history\n"
+            "/id - show your Telegram user ID\n\n"
+            "Or ask any question naturally—web searches and URL reading will trigger automatically when needed."
         )
         await sender.send_text(to=update.chat_id, text=reply)
         return {
@@ -127,10 +139,6 @@ async def handle_command(
         }
 
     if command == "/reset":
-        # Reset is implemented by not using prior history: we process the
-        # current message but treat history as empty. Since history comes from
-        # the DB keyed by chat_id, we simply delete prior messages for this
-        # sender so future turns start fresh.
         from app.database import repository
 
         with repository.transaction() as conn:
@@ -150,10 +158,13 @@ async def handle_command(
         from app.config import config
 
         llm_ok = bool(config.llm_base_url)
+        searx_ok = bool(config.searxng_base_url)
         reply = (
-            "Karna status\n"
+            "Karna Status\n"
             f"Local LLM: {'configured' if llm_ok else 'NOT configured'}\n"
-            f"Channel: Telegram (long polling)\n"
+            f"Web Search (SearXNG): {'configured' if searx_ok else 'NOT configured'}\n"
+            "Web Extractor: Crawl4AI + Playwright\n"
+            "Channel: Telegram (long polling)\n"
             f"Max history messages: {config.max_history_messages}"
         )
         await sender.send_text(to=update.chat_id, text=reply)

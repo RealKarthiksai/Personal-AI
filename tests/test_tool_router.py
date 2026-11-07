@@ -1,0 +1,88 @@
+"""Unit tests for ToolRouter."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from app.database.models import ExtractedContent, SearchResult
+from app.services.tool_router import ToolRouter
+
+
+@pytest.fixture
+def mock_search_svc():
+    svc = AsyncMock()
+    svc.search.return_value = [
+        SearchResult(title="Result 1", url="https://res1.com", snippet="Snippet 1")
+    ]
+    svc.format_for_llm = MagicMock(return_value="Formatted Search Results")
+    return svc
+
+
+@pytest.fixture
+def mock_extractor_svc():
+    svc = AsyncMock()
+    svc.extract.return_value = ExtractedContent(
+        url="https://article.org",
+        title="Article Title",
+        markdown="Article Markdown Content",
+        success=True,
+    )
+    svc.format_for_llm = MagicMock(return_value="Formatted Webpage Content")
+    return svc
+
+
+@pytest.fixture
+def router(mock_search_svc, mock_extractor_svc):
+    return ToolRouter(search_svc=mock_search_svc, extractor_svc=mock_extractor_svc)
+
+
+def test_url_detection(router):
+    urls = router.extract_urls("Check out https://github.com/torvalds/linux and http://test.org")
+    assert urls == ["https://github.com/torvalds/linux", "http://test.org"]
+
+
+def test_detect_search_query(router):
+    # Explicit command
+    assert router.detect_search_query("/search arch linux kernel") == "arch linux kernel"
+    # Natural language queries
+    assert router.detect_search_query("search for latest Python release") == "latest Python release"
+    assert router.detect_search_query("who won the super bowl 2026?") == "the super bowl 2026"
+    assert router.detect_search_query("what is the latest stable version of node?") == "stable version of node"
+    # General chatter (should be None)
+    assert router.detect_search_query("Hello there, how are you today?") is None
+    assert router.detect_search_query("Write a python function to add two numbers") is None
+
+
+def test_detect_read_url(router):
+    assert router.detect_read_url("/read https://news.ycombinator.com") == "https://news.ycombinator.com"
+    assert router.detect_read_url("Can you summarize https://example.com/post ?") == "https://example.com/post"
+    assert router.detect_read_url("What is AI?") is None
+
+
+@pytest.mark.asyncio
+async def test_route_to_search(router, mock_search_svc):
+    res = await router.route_and_execute("search for fast web scraping")
+    assert res.tool_name == "searxng_search"
+    assert res.input_value == "fast web scraping"
+    assert res.context_text == "Formatted Search Results"
+    mock_search_svc.search.assert_awaited_once_with("fast web scraping")
+
+
+@pytest.mark.asyncio
+async def test_route_to_extractor(router, mock_extractor_svc):
+    res = await router.route_and_execute("Please summarize https://example.com/article")
+    assert res.tool_name == "web_extractor"
+    assert res.input_value == "https://example.com/article"
+    assert res.context_text == "Formatted Webpage Content"
+    mock_extractor_svc.extract.assert_awaited_once_with("https://example.com/article")
+
+
+@pytest.mark.asyncio
+async def test_route_direct(router, mock_search_svc, mock_extractor_svc):
+    res = await router.route_and_execute("Tell me a joke about computers")
+    assert res.tool_name is None
+    assert res.context_text is None
+    mock_search_svc.search.assert_not_awaited()
+    mock_extractor_svc.extract.assert_not_awaited()

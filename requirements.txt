@@ -5,3 +5,5 @@ pydantic==2.14.3
 pydantic-settings==2.16.2
 python-dotenv==1.2.4
 python-telegram-bot==22.8
+crawl4ai==0.9.5
+playwright==1.64.1

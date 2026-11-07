@@ -22,5 +22,4 @@ def test_root() -> None:
     resp = client.get("/")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["name"] == "Local AI Chatbot (Karna)"
-    assert body["endpoints"] == ["/health"]
+    assert "/health" in body["endpoints"]

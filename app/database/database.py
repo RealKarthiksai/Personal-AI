@@ -40,6 +40,37 @@ CREATE INDEX IF NOT EXISTS idx_messages_external_id
     ON messages (external_message_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created
     ON messages (created_at);
+
+CREATE TABLE IF NOT EXISTS search_cache (
+    query_hash TEXT PRIMARY KEY,
+    query TEXT NOT NULL,
+    results_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS page_cache (
+    url_hash TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    title TEXT,
+    markdown_content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tool_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name TEXT NOT NULL,
+    input_data TEXT,
+    output_summary TEXT,
+    duration_ms REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_cache_created
+    ON search_cache (created_at);
+CREATE INDEX IF NOT EXISTS idx_page_cache_created
+    ON page_cache (created_at);
+CREATE INDEX IF NOT EXISTS idx_tool_logs_tool
+    ON tool_logs (tool_name, created_at);
 """
 
 _init_lock: bool = False

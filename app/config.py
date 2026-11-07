@@ -32,11 +32,20 @@ class Config:
         self.telegram_allowed_user_ids = s.telegram_allowed_user_ids
         self.allowed_telegram_user_ids = s.allowed_telegram_user_ids
 
+        # Web Search & Extraction
+        self.searxng_base_url = s.searxng_base_url.rstrip("/") if s.searxng_base_url else ""
+        self.search_cache_ttl_seconds = s.search_cache_ttl_seconds
+        self.crawler_timeout_seconds = s.crawler_timeout_seconds
+        self.crawler_max_content_chars = s.crawler_max_content_chars
+
     def is_telegram_configured(self) -> bool:
         return bool(self.telegram_bot_token)
 
     def is_llm_configured(self) -> bool:
         return bool(self.llm_base_url)
+
+    def is_searxng_configured(self) -> bool:
+        return bool(self.searxng_base_url)
 
     def __repr__(self) -> str:  # pragma: no cover - debugging only, secrets masked
         return (

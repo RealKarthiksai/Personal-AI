@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     max_history_messages: int = Field(default=12)
     request_timeout_seconds: int = Field(default=60)
 
+    # --- Web Search (SearXNG) -------------------------------------------------
+    searxng_base_url: str = Field(default="http://127.0.0.1:8080")
+    search_cache_ttl_seconds: int = Field(default=3600)
+
+    # --- Web Extraction (Crawl4AI) -------------------------------------------
+    crawler_timeout_seconds: int = Field(default=15)
+    crawler_max_content_chars: int = Field(default=4000)
+
     # --------------------------------------------------------------------------
     @property
     def allowed_telegram_user_ids(self) -> List[int]:

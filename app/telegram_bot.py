@@ -144,6 +144,8 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("id", _start_command))
     application.add_handler(CommandHandler("reset", _start_command))
     application.add_handler(CommandHandler("status", _start_command))
+    application.add_handler(CommandHandler("search", _start_command))
+    application.add_handler(CommandHandler("read", _start_command))
 
     # Text message handler (non-command).
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _text_message))

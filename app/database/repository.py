@@ -104,3 +104,89 @@ def get_message_count(sender_id: str) -> int:
             (sender_id,),
         ).fetchone()
         return int(row["c"])
+
+
+def get_cached_search(query_hash: str, max_age_seconds: int = 3600) -> Optional[str]:
+    """Retrieve cached search results JSON if within max_age_seconds."""
+    with transaction() as conn:
+        row = conn.execute(
+            """
+            SELECT results_json
+            FROM search_cache
+            WHERE query_hash = ?
+              AND (strftime('%s', 'now') - strftime('%s', created_at)) <= ?
+            """,
+            (query_hash, max_age_seconds),
+        ).fetchone()
+        return str(row["results_json"]) if row else None
+
+
+def set_cached_search(query_hash: str, query: str, results_json: str) -> None:
+    """Insert or replace cached search results."""
+    with transaction() as conn:
+        conn.execute(
+            """
+            INSERT INTO search_cache (query_hash, query, results_json, created_at)
+            VALUES (?, ?, ?, datetime('now'))
+            ON CONFLICT(query_hash) DO UPDATE SET
+                results_json = excluded.results_json,
+                created_at = excluded.created_at
+            """,
+            (query_hash, query, results_json),
+        )
+
+
+def get_cached_page(url_hash: str, max_age_seconds: int = 86400) -> Optional[dict]:
+    """Retrieve cached page markdown and title if within max_age_seconds."""
+    with transaction() as conn:
+        row = conn.execute(
+            """
+            SELECT url, title, markdown_content, created_at
+            FROM page_cache
+            WHERE url_hash = ?
+              AND (strftime('%s', 'now') - strftime('%s', created_at)) <= ?
+            """,
+            (url_hash, max_age_seconds),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "url": row["url"],
+            "title": row["title"],
+            "markdown_content": row["markdown_content"],
+            "created_at": row["created_at"],
+        }
+
+
+def set_cached_page(url_hash: str, url: str, title: str, markdown_content: str) -> None:
+    """Insert or replace cached webpage content."""
+    with transaction() as conn:
+        conn.execute(
+            """
+            INSERT INTO page_cache (url_hash, url, title, markdown_content, created_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(url_hash) DO UPDATE SET
+                title = excluded.title,
+                markdown_content = excluded.markdown_content,
+                created_at = excluded.created_at
+            """,
+            (url_hash, url, title, markdown_content),
+        )
+
+
+def log_tool_execution(
+    tool_name: str,
+    input_data: str,
+    output_summary: str,
+    duration_ms: float,
+) -> int:
+    """Record a tool execution metric row."""
+    with transaction() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO tool_logs (tool_name, input_data, output_summary, duration_ms)
+            VALUES (?, ?, ?, ?)
+            """,
+            (tool_name, input_data[:1000], output_summary[:1000], duration_ms),
+        )
+        return int(cursor.lastrowid or 0)

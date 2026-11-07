@@ -11,6 +11,7 @@ import logging
 from fastapi import FastAPI
 
 from app.api.routes import health as health_module
+from app.api.routes import tools as tools_module
 from app.config import config
 from app.database import database
 from app.utils.logging import configure_logging, get_logger
@@ -21,12 +22,13 @@ configure_logging(level=logging.INFO)
 
 app = FastAPI(
     title="Local AI Chatbot (Karna)",
-    description="Replies via a local llama.cpp LLM across configured messaging channels.",
+    description="Replies via a local llama.cpp LLM across configured messaging channels with live web search and extraction.",
     version="0.1.0",
 )
 
 # Include routers.
 app.include_router(health_module.router)
+app.include_router(tools_module.router)
 
 
 @app.on_event("startup")
@@ -34,10 +36,11 @@ async def on_startup() -> None:
     """Initialize the database and log configuration status (no secrets)."""
     database.init_db()
     logger.info(
-        "Application starting | env=%s | llm=%s | telegram=%s",
+        "Application starting | env=%s | llm=%s | telegram=%s | searxng=%s",
         config.app_env,
         "configured" if config.is_llm_configured() else "NOT configured",
         "configured" if config.is_telegram_configured() else "NOT configured",
+        "configured" if config.is_searxng_configured() else "NOT configured",
         extra={"request_id": "system", "message_id": "system"},
     )
 
@@ -47,5 +50,10 @@ async def root() -> dict:
     return {
         "name": "Local AI Chatbot (Karna)",
         "version": "0.1.0",
-        "endpoints": ["/health"],
+        "endpoints": [
+            "/health",
+            "/api/v1/tools/search",
+            "/api/v1/tools/extract",
+            "/api/v1/tools/status",
+        ],
     }
