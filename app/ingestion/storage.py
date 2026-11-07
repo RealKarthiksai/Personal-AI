@@ -160,7 +160,7 @@ def query_records(params: ExternalRecordQuery) -> List[ExternalRecord]:
 
     where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     sql = f"""
-        SELECT source, source_id, record_type, title, url, description,
+        SELECT id, source, source_id, record_type, title, url, description,
                published_at, updated_at, metadata, fetched_at
         FROM external_records
         {where_sql}
@@ -182,6 +182,7 @@ def query_records(params: ExternalRecordQuery) -> List[ExternalRecord]:
                 meta_dict = {}
         results.append(
             ExternalRecord(
+                id=r["id"],
                 source=r["source"],
                 source_id=r["source_id"],
                 record_type=r["record_type"],

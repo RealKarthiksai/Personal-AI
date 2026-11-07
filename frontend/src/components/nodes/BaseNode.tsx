@@ -27,6 +27,7 @@ const typeColors: Record<string, string> = {
   processing: "border-purple-500 bg-purple-500/10",
   llm: "border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]",
   memory: "border-teal-500 bg-teal-500/10",
+  extension: "border-cyan-500 bg-cyan-500/10",
   output: "border-slate-500 bg-slate-500/10",
 };
 

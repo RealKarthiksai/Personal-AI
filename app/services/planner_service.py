@@ -74,20 +74,19 @@ class PlannerService:
             )
 
         prompt = (
-            f"Today is {temp_ctx['day']}, {temp_ctx['month']} {temp_ctx['day']}, {temp_ctx['year']} "
-            f"(Date: {temp_ctx['current_date']}, Timezone: {temp_ctx['timezone']}).\n"
+            f"Current Date: {temp_ctx['current_date']} ({temp_ctx['day']}), Timezone: {temp_ctx['timezone']}.\n"
             f"User Request: {effective_text}\n\n"
             "Analyze the user request. Does it require external web search or live information "
             "(e.g. current events, hackathons, news, weather, release dates, factual lookups)?\n"
             "Respond ONLY with a JSON object in this exact schema without preamble or markdown:\n"
             "{\n"
             '  "requires_search": true,\n'
-            '  "task_summary": "Find hackathons in Hyderabad for current month",\n'
+            '  "task_summary": "<1-sentence summary of specific research goal>",\n'
             '  "search_queries": [\n'
-            '    "hackathons in Hyderabad November 2026",\n'
-            '    "tech competitions and hackathons Hyderabad 2026 Unstop Devfolio"\n'
+            '    "<specific query 1 with dates/location if relevant>",\n'
+            '    "<specific query 2 with relevant platforms/keywords>"\n'
             "  ],\n"
-            '  "required_details": ["event dates", "location", "registration deadline", "prize pool", "links"]\n'
+            '  "required_details": ["dates", "location", "details", "links"]\n'
             "}\n"
             "If the request is general chatter, greeting, math, or self-contained reasoning that does NOT need search:\n"
             "{\n"

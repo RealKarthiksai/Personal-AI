@@ -144,12 +144,14 @@ def test_monitoring_api_routes() -> None:
         assert resp_check.json()["status"] == "inserted"
 
     # 4. Webhook endpoint
-    resp_wh = client.post(
-        "/api/integrations/monitoring/webhook",
-        json={"watch_url": "https://example.com/alerts", "title": "Alert Page", "diff": "Changed text"},
-    )
-    assert resp_wh.status_code == 200
-    assert resp_wh.json()["status"] == "processed"
+    with patch("app.integrations.monitoring.service.monitoring_service.notify_users_of_change", new_callable=AsyncMock) as mock_notify:
+        resp_wh = client.post(
+            "/api/integrations/monitoring/webhook",
+            json={"watch_url": "https://example.com/alerts", "title": "Alert Page", "diff": "Changed text"},
+        )
+        assert resp_wh.status_code == 200
+        assert resp_wh.json()["status"] == "processed"
+        mock_notify.assert_awaited_once()
 
     # 5. Delete watch
     resp_del = client.delete(f"/api/integrations/monitoring/watches/{wid}")

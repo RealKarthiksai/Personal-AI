@@ -208,8 +208,8 @@ def test_retrieval_bridge_and_formatting() -> None:
     assert len(results) == 1
 
     formatted = format_records_for_llm(results)
-    assert "### Ingested External Records:" in formatted
-    assert "[LangChain Framework](https://github.com/langchain-ai/langchain)" in formatted
+    assert "LangChain Framework" in formatted
+    assert "https://github.com/langchain-ai/langchain" in formatted
     assert "Github • Repository" in formatted
     assert "⭐ 85000 stars" in formatted
 

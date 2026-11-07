@@ -85,16 +85,39 @@ class TelegramRenderer:
     """Renders Document IR into compliant Telegram HTML."""
 
     def render(self, doc: Document, max_length: int = 4000) -> List[str]:
-        """Convert a Document into one or more Telegram HTML message chunks."""
-        sections: List[str] = []
+        """Convert a Document into one or more Telegram HTML message chunks split at block boundaries."""
+        chunks: List[str] = []
+        current_chunk_blocks: List[str] = []
+        current_chunk_len = 0
 
         for block in doc.blocks:
             rendered = self._render_block(block)
-            if rendered:
-                sections.append(rendered)
+            if not rendered:
+                continue
 
-        full_text = "\n\n".join(sections).strip()
-        return split_into_chunks(full_text, max_length=max_length)
+            # If an individual block itself exceeds max_length, flush current chunk and split block
+            if len(rendered) > max_length:
+                if current_chunk_blocks:
+                    chunks.append("\n\n".join(current_chunk_blocks).strip())
+                    current_chunk_blocks = []
+                    current_chunk_len = 0
+                sub_chunks = split_into_chunks(rendered, max_length=max_length)
+                chunks.extend(sub_chunks)
+                continue
+
+            block_len = len(rendered) + 2  # plus \n\n separator
+            if current_chunk_blocks and (current_chunk_len + block_len > max_length):
+                chunks.append("\n\n".join(current_chunk_blocks).strip())
+                current_chunk_blocks = [rendered]
+                current_chunk_len = len(rendered)
+            else:
+                current_chunk_blocks.append(rendered)
+                current_chunk_len += block_len
+
+        if current_chunk_blocks:
+            chunks.append("\n\n".join(current_chunk_blocks).strip())
+
+        return chunks or [""]
 
     def _render_block(self, block: Block) -> str:
         if isinstance(block, HeadingBlock):
@@ -152,8 +175,11 @@ class TelegramRenderer:
             indent = "  " * item.level
 
             if block.ordered:
-                prefix = f"{idx}. " if item.level == 0 else f"{chr(96 + (idx % 26))}. "
-                lines.append(f"{indent}<b>{prefix}</b>{clean}")
+                if item.level == 0:
+                    lines.append(f"<b>{idx}. </b>{clean}")
+                else:
+                    sub_bullet = "◦" if item.level == 1 else "▪"
+                    lines.append(f"{indent}{sub_bullet} {clean}")
             else:
                 bullet = "•" if item.level == 0 else ("◦" if item.level == 1 else "▪")
                 lines.append(f"{indent}{bullet} {clean}")

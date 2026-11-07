@@ -83,6 +83,9 @@ export function Sidebar({ isOpen }: SidebarProps) {
                     purple: "bg-purple-500",
                     amber: "bg-amber-500",
                     teal: "bg-teal-500",
+                    cyan: "bg-cyan-500",
+                    rose: "bg-rose-500",
+                    orange: "bg-orange-500",
                   }[layer.color]
                 )}
               ></span>

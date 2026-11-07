@@ -15,6 +15,9 @@ export function LayerGroup({ layer, children }: LayerGroupProps) {
     purple: "border-purple-500/30 bg-purple-500/5",
     amber: "border-amber-500/30 bg-amber-500/5",
     teal: "border-teal-500/30 bg-teal-500/5",
+    cyan: "border-cyan-500/30 bg-cyan-500/5",
+    rose: "border-rose-500/30 bg-rose-500/5",
+    orange: "border-orange-500/30 bg-orange-500/5",
   };
 
   return (

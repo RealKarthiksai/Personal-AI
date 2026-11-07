@@ -136,13 +136,19 @@ class MarkdownParser:
                     if cur_u:
                         indent = len(cur_u.group(1))
                         level = indent // 2 if indent >= 2 else 0
-                        list_items.append(ListItem(text=cur_u.group(2).strip(), level=level, index=None))
+                        raw_item_text = cur_u.group(2).strip()
+                        clean_item_text = re.sub(r"^\*\*\d+[.)]?\*\*\s*", "", raw_item_text)
+                        clean_item_text = re.sub(r"^\d+[.)]\s*", "", clean_item_text)
+                        list_items.append(ListItem(text=clean_item_text, level=level, index=None))
                         i += 1
                     elif cur_o:
                         indent = len(cur_o.group(1))
                         level = indent // 2 if indent >= 2 else 0
                         idx = int(cur_o.group(2))
-                        list_items.append(ListItem(text=cur_o.group(3).strip(), level=level, index=idx))
+                        raw_item_text = cur_o.group(3).strip()
+                        clean_item_text = re.sub(r"^\*\*\d+[.)]?\*\*\s*", "", raw_item_text)
+                        clean_item_text = re.sub(r"^\d+[.)]\s*", "", clean_item_text)
+                        list_items.append(ListItem(text=clean_item_text, level=level, index=idx))
                         i += 1
                     elif cur_line.startswith("   ") or cur_line.startswith("\t"):
                         # Continuation of previous list item

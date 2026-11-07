@@ -184,10 +184,11 @@ def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     elif path.startswith("sqlite://"):
         path = path[len("sqlite://"):]
 
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=10.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
@@ -206,11 +207,36 @@ def transaction(db_path: Optional[str] = None) -> Iterator[sqlite3.Connection]:
 
 
 def init_db() -> None:
-    """Create tables if they do not exist. Safe to call on every startup."""
+    """Create tables if they do not exist and apply migrations. Safe to call on every startup."""
     global _init_lock
     if _init_lock:
         return
     with transaction() as conn:
         conn.executescript(SCHEMA)
+
+        # Migration: Add first_indexed_at & published_at_trusted to external_records if missing
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(external_records)").fetchall()]
+        if "first_indexed_at" not in cols:
+            conn.execute("ALTER TABLE external_records ADD COLUMN first_indexed_at TEXT")
+            conn.execute("ALTER TABLE external_records ADD COLUMN published_at_trusted INTEGER DEFAULT 0")
+            conn.execute(
+                "UPDATE external_records SET first_indexed_at = COALESCE(fetched_at, strftime('%Y-%m-%dT%H:%M:%SZ', 'now')) WHERE first_indexed_at IS NULL"
+            )
+
+        # Migration: Create delivered_items table for briefing deduplication
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS delivered_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                record_id INTEGER NOT NULL REFERENCES external_records(id) ON DELETE CASCADE,
+                channel TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('briefing', 'query')),
+                delivered_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS ix_delivered ON delivered_items(user_id, record_id, delivered_at)")
+
     _init_lock = True
-    logger.info("Database schema initialized", extra={"request_id": "system", "message_id": "system"})
+    logger.info("Database schema initialized with migrations", extra={"request_id": "system", "message_id": "system"})

@@ -200,7 +200,7 @@ async def test_route_to_daily_briefing_with_records(router, monkeypatch):
     assert res.input_value == "daily_briefing"
     assert "Python 3.14 Alpha Released" in res.context_text
     assert "https://python.org/news/314" in res.context_text
-    assert "Ingested External Records" in res.context_text
+    assert "Daily Intelligence Briefing" in res.context_text
 
 
 @pytest.mark.asyncio

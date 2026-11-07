@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 class ExternalRecord(BaseModel):
     """Unified data model for records ingested from external sources."""
 
+    id: Optional[int] = Field(default=None, description="Internal SQLite primary key (if persisted)")
     source: str = Field(
         ...,
         description="Provider source identifier (e.g. 'github', 'reddit', 'openalex', 'rss', 'changedetection')",
@@ -45,10 +46,12 @@ class IngestionResult(BaseModel):
     """Summary of batch ingestion run."""
 
     total_received: int = 0
+    fetched_count: int = 0
     inserted: int = 0
     updated: int = 0
     skipped_identical: int = 0
     failed: int = 0
+    record_ids: List[int] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
 
 

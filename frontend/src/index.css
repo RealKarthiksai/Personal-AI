@@ -20,3 +20,30 @@
 ::selection {
   @apply bg-amber-500/30 text-white;
 }
+
+/* React Flow node wrapper resets: prevent default white background and borders from showing behind custom nodes */
+.react-flow__node-input,
+.react-flow__node-output,
+.react-flow__node-default,
+.react-flow__node-group {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  width: auto !important;
+  color: inherit !important;
+  text-align: inherit !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.react-flow__node-input.selectable:hover,
+.react-flow__node-default.selectable:hover,
+.react-flow__node-output.selectable:hover,
+.react-flow__node-group.selectable:hover,
+.react-flow__node-input.selectable.selected,
+.react-flow__node-default.selectable.selected,
+.react-flow__node-output.selectable.selected,
+.react-flow__node-group.selectable.selected {
+  box-shadow: none !important;
+}

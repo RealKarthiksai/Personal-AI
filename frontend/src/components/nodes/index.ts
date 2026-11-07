@@ -6,3 +6,4 @@ export { ProcessingNode } from "./ProcessingNode";
 export { LlmNode } from "./LlmNode";
 export { MemoryNode } from "./MemoryNode";
 export { OutputNode } from "./OutputNode";
+export { ExtensionNode } from "./ExtensionNode";

@@ -71,7 +71,7 @@ class IngestionPipeline:
             records: List of external records to ingest.
             source_name: Optional source identifier for logging and source registry.
         """
-        result = IngestionResult(total_received=len(records))
+        result = IngestionResult(total_received=len(records), fetched_count=len(records))
         if not records:
             return result
 
@@ -91,7 +91,9 @@ class IngestionPipeline:
         for raw_rec in deduped:
             try:
                 norm_rec = self.validate_and_normalize(raw_rec)
-                _, status = upsert_record(norm_rec)
+                rec_id, status = upsert_record(norm_rec)
+                if rec_id:
+                    result.record_ids.append(rec_id)
 
                 if status == "inserted":
                     result.inserted += 1

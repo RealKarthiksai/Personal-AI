@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from app.config import config
+from app.integrations.errors import map_httpx_exception
 from app.utils.logging import get_logger
 
 logger = get_logger("app.integrations.github.client")
@@ -32,10 +33,13 @@ class GitHubClient:
 
     async def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Any:
         url = f"{self.BASE_URL}{endpoint}"
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(url, headers=self.headers, params=params)
-            response.raise_for_status()
-            return response.json()
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(url, headers=self.headers, params=params)
+                response.raise_for_status()
+                return response.json()
+        except Exception as exc:
+            raise map_httpx_exception(exc, source="github") from exc
 
     async def search_repositories(
         self,

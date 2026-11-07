@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from app.config import config
+from app.integrations.errors import SourceUnconfigured, map_httpx_exception
 from app.utils.logging import get_logger
 
 logger = get_logger("app.integrations.reddit.client")
@@ -20,7 +21,6 @@ class RedditClient:
 
     OAUTH_URL = "https://www.reddit.com/api/v1/access_token"
     OAUTH_API_BASE = "https://oauth.reddit.com"
-    PUBLIC_BASE = "https://www.reddit.com"
 
     def __init__(
         self,
@@ -36,9 +36,12 @@ class RedditClient:
     def is_oauth_configured(self) -> bool:
         return bool(self.client_id and self.client_secret)
 
-    async def _get_oauth_token(self) -> Optional[str]:
+    async def _get_oauth_token(self) -> str:
         if not self.is_oauth_configured():
-            return None
+            raise SourceUnconfigured(
+                "Reddit API credentials not configured (set REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET)",
+                source="reddit",
+            )
         if self._access_token:
             return self._access_token
 
@@ -52,42 +55,27 @@ class RedditClient:
                 resp.raise_for_status()
                 token_data = resp.json()
                 self._access_token = token_data.get("access_token")
+                if not self._access_token:
+                    raise SourceUnconfigured("Reddit OAuth token exchange returned empty token", source="reddit")
                 return self._access_token
         except Exception as exc:
-            logger.warning("Reddit OAuth failed, falling back to public JSON API: %s", exc)
-            return None
+            raise map_httpx_exception(exc, source="reddit") from exc
 
     async def _request(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         token = await self._get_oauth_token()
-        headers = {"User-Agent": self.user_agent}
-
-        if token:
-            url = f"{self.OAUTH_API_BASE}{path}"
-            headers["Authorization"] = f"Bearer {token}"
-        else:
-            # Public endpoint format: ensure .json extension
-            json_path = path if path.endswith(".json") else f"{path}.json"
-            url = f"{self.PUBLIC_BASE}{json_path}"
+        headers = {
+            "User-Agent": self.user_agent,
+            "Authorization": f"Bearer {token}",
+        }
+        url = f"{self.OAUTH_API_BASE}{path}"
 
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(url, headers=headers, params=params)
                 resp.raise_for_status()
                 return resp.json()
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 403:
-                logger.warning(
-                    "Reddit request to %s returned 403 Forbidden. Unauthenticated requests may be blocked by Reddit; configure REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET for OAuth.",
-                    url,
-                )
-            elif exc.response.status_code == 429:
-                logger.warning("Reddit rate limit exceeded on %s (429)", url)
-            else:
-                logger.error("Reddit HTTP error on %s: %s", url, exc)
-            return {}
         except Exception as exc:
-            logger.error("Reddit request failed on %s: %s", url, exc)
-            return {}
+            raise map_httpx_exception(exc, source="reddit") from exc
 
     def _extract_posts(self, data: Any) -> List[Dict[str, Any]]:
         """Extract child post data dicts from Reddit Listing response."""

@@ -1,20 +1,80 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { ReactFlow, Controls, MiniMap, Background, useNodesState, useEdgesState, addEdge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { InputNode, OrchestratorNode, ToolNode, ProcessingNode, LlmNode, MemoryNode, OutputNode } from "@/components/nodes";
+import { InputNode, OrchestratorNode, ToolNode, ProcessingNode, LlmNode, MemoryNode, OutputNode, ExtensionNode } from "@/components/nodes";
 import { useBlueprintStore } from "@/store/blueprintStore";
 import { useUIStore } from "@/store/uiStore";
 import { runLayout } from "@/lib/layout";
 import { Button } from "@/components/ui/Button";
 
-const nodeTypes: Record<string, React.ComponentType<any>> = { input: InputNode, orchestrator: OrchestratorNode, tool: ToolNode, processing: ProcessingNode, llm: LlmNode, memory: MemoryNode, output: OutputNode };
+const nodeTypes: Record<string, React.ComponentType<any>> = {
+  input: InputNode,
+  orchestrator: OrchestratorNode,
+  tool: ToolNode,
+  processing: ProcessingNode,
+  llm: LlmNode,
+  memory: MemoryNode,
+  extension: ExtensionNode,
+  output: OutputNode,
+};
 
 export function FlowCanvas() {
   const { blueprint, resetToSeed } = useBlueprintStore();
   const { setSelectedNode, setSelectedEdge, layoutDirection, setLayoutDirection, showPromptsOnCanvas, setShowPromptsOnCanvas } = useUIStore();
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(blueprint.nodes.map((n: any) => ({ id: n.id, type: n.type, position: { x: 0, y: 0 }, data: { label: n.label, description: n.description, tech: n.tech, features: n.features, status: n.status, llmCallCount: n.llmCallIds?.length || 0, modelName: undefined } })));
-  const [edges, setEdges, onEdgesChange] = useEdgesState(blueprint.edges.map((e: any) => ({ id: e.id, source: e.source, target: e.target, label: e.label, animated: e.animated })));
+  const [nodes, setNodes, onNodesChange] = useNodesState(
+    blueprint.nodes.map((n: any) => ({
+      id: n.id,
+      type: n.type,
+      position: { x: 0, y: 0 },
+      data: {
+        label: n.label,
+        description: n.description,
+        tech: n.tech,
+        features: n.features,
+        status: n.status,
+        llmCallCount: n.llmCallIds?.length || 0,
+        modelName: undefined,
+      },
+    }))
+  );
+  const [edges, setEdges, onEdgesChange] = useEdgesState(
+    blueprint.edges.map((e: any) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: e.label,
+      animated: e.animated,
+    }))
+  );
+
+  // Sync canvas nodes and edges whenever blueprint changes (e.g. resetToSeed or store update)
+  useEffect(() => {
+    const rawNodes = blueprint.nodes.map((n: any) => ({
+      id: n.id,
+      type: n.type,
+      position: { x: 0, y: 0 },
+      data: {
+        label: n.label,
+        description: n.description,
+        tech: n.tech,
+        features: n.features,
+        status: n.status,
+        llmCallCount: n.llmCallIds?.length || 0,
+        modelName: undefined,
+      },
+    }));
+    const rawEdges = blueprint.edges.map((e: any) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      label: e.label,
+      animated: e.animated,
+    }));
+    const positioned = runLayout(rawNodes as any, rawEdges as any, layoutDirection);
+    setNodes(positioned as any);
+    setEdges(rawEdges);
+  }, [blueprint.nodes, blueprint.edges, layoutDirection, setNodes, setEdges]);
 
   const handleConnect = useCallback((params: any) => { setEdges((eds: any) => addEdge({ ...params, animated: true }, eds)); }, [setEdges]);
   const handleEdgeClick = useCallback((e: any, edge: any) => { e.stopPropagation(); setSelectedEdge(edge.id); setSelectedNode(null); }, [setSelectedEdge, setSelectedNode]);
@@ -38,7 +98,24 @@ export function FlowCanvas() {
           Show prompts on canvas
         </label>
       </div>
-      <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={handleConnect} onInit={handleOnInit} onNodeClick={handleNodeClick} onEdgeClick={handleEdgeClick} onPaneClick={() => { setSelectedNode(null); setSelectedEdge(null); }} nodeTypes={nodeTypes} panOnScroll minZoom={0.3} maxZoom={2} fitView style={{ height: "100%", width: "100%" }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        colorMode="dark"
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={handleConnect}
+        onInit={handleOnInit}
+        onNodeClick={handleNodeClick}
+        onEdgeClick={handleEdgeClick}
+        onPaneClick={() => { setSelectedNode(null); setSelectedEdge(null); }}
+        nodeTypes={nodeTypes}
+        panOnScroll
+        minZoom={0.3}
+        maxZoom={2}
+        fitView
+        style={{ height: "100%", width: "100%" }}
+      >
         <Controls position="top-right" />
         <MiniMap position="bottom-right" nodeBorderRadius={2} />
         <Background gap={16} color="#141417" />
