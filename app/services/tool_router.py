@@ -21,10 +21,24 @@ URL_REGEX = re.compile(r"https?://[^\s<>\"'()]+", re.IGNORECASE)
 
 # Patterns that indicate search or real-time intent
 SEARCH_PATTERNS = [
-    r"^(?:search|google|look\s*up|find)\s+(?:for\s+)?(.+)",
-    r"^(?:what\s+is\s+the\s+latest|who\s+won|what\s+happened\s+with|current\s+price\s+of|weather\s+in)\s+(.+)",
-    r".*\b(?:latest\s+version\s+of|recent\s+news\s+about|release\s+date\s+of)\s+([a-zA-Z0-9\s\.\-_]+)",
-    r".*\b(?:search\s+the\s+web\s+for|search\s+online\s+for)\s+(.+)",
+    # Explicit search / find prefixes: "can you find ...", "please search ...", "find all ..."
+    r"^(?:can\s+you\s+|could\s+you\s+|please\s+|help\s+me\s+)?(?:find|search|look\s*up|google|check|get|tell\s+me\s+about|show\s+me)\s+(?:for\s+|out\s+)?(.+)",
+    # Questions about current events, scores, weather, people, dates
+    r"^(?:what\s+(?:is|are)\s+the\s+latest|who\s+won|what\s+happened\s+with|current\s+price\s+of|weather\s+in|news\s+about)\s+(.+)",
+    r".*\b(?:latest\s+version\s+of|recent\s+news\s+about|release\s+date\s+of|upcoming\s+events\s+in|hackathons\s+in)\s+(.+)",
+    r".*\b(?:search\s+the\s+web\s+for|search\s+online\s+for|search\s+for)\s+(.+)",
+]
+
+# Follow-up requests that refer back to the prior turn: "use searching", "search it", "google it"
+FOLLOWUP_PATTERNS = [
+    r"^(?:use\s+searching|use\s+search|search\s+that|search\s+it|search\s+again|google\s+it|look\s+it\s+up|search|try\s+searching|browse\s+the\s+web|look\s+online)[\s\.\?!]*$",
+]
+
+# Real-time event/live knowledge keywords: if found alongside location/time qualifiers
+REALTIME_KEYWORDS = [
+    r"\b(?:hackathon|hackathons|conference|conferences|meetup|meetups|webinar|webinars)\b",
+    r"\b(?:weather|forecast|stock\s+price|live\s+score|breaking\s+news|ticket\s+booking)\b",
+    r"\b(?:upcoming\s+events|events\s+happening|happening\s+in)\b",
 ]
 
 
@@ -51,21 +65,40 @@ class ToolRouter:
         """Extract HTTP/HTTPS URLs from the input text."""
         return URL_REGEX.findall(text)
 
-    def detect_search_query(self, text: str) -> Optional[str]:
-        """Determine if text expresses explicit or strong search intent."""
+    def detect_search_query(
+        self,
+        text: str,
+        previous_query: Optional[str] = None,
+    ) -> Optional[str]:
+        """Determine if text expresses explicit, topical, or follow-up search intent."""
         stripped = text.strip()
 
-        # Handle explicit /search command
+        # 1. Handle explicit /search command
         if stripped.lower().startswith("/search"):
             parts = stripped.split(maxsplit=1)
-            return parts[1].strip() if len(parts) > 1 else None
+            if len(parts) > 1 and parts[1].strip():
+                return parts[1].strip()
+            if previous_query:
+                return previous_query.strip()
+            return None
 
+        # 2. Check for followup patterns like "use searching", "search it"
+        for pattern in FOLLOWUP_PATTERNS:
+            if re.search(pattern, stripped, re.IGNORECASE):
+                if previous_query:
+                    return previous_query.strip()
+
+        # 3. Check explicit search / question patterns
         for pattern in SEARCH_PATTERNS:
             match = re.search(pattern, stripped, re.IGNORECASE)
             if match:
                 query = match.group(1).strip()
-                # Remove trailing question marks or punctuation
                 return query.rstrip("?.! ")
+
+        # 4. Check real-time event / live knowledge keywords
+        for pattern in REALTIME_KEYWORDS:
+            if re.search(pattern, stripped, re.IGNORECASE):
+                return stripped.rstrip("?.! ")
 
         return None
 
@@ -86,7 +119,11 @@ class ToolRouter:
 
         return None
 
-    async def route_and_execute(self, user_message: str) -> ToolExecutionResult:
+    async def route_and_execute(
+        self,
+        user_message: str,
+        previous_query: Optional[str] = None,
+    ) -> ToolExecutionResult:
         """Analyze message, execute appropriate tool if needed, and return context."""
         clean_text = user_message.strip()
 
@@ -114,7 +151,7 @@ class ToolRouter:
                 )
 
         # 2. Search intent check
-        search_query = self.detect_search_query(clean_text)
+        search_query = self.detect_search_query(clean_text, previous_query=previous_query)
         if search_query:
             logger.info("ToolRouter: routing to SearchService | query=%r", search_query)
             status_msg = f"🔍 Searching the web for: {search_query}..."

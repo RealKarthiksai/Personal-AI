@@ -120,8 +120,18 @@ class ChatService:
         # 4. Retrieve recent conversation history.
         history = repository.get_recent_history(sender_id, self.max_history)
 
+        # Extract previous inbound user message for follow-ups (e.g. "use searching")
+        previous_user_message: Optional[str] = None
+        for entry in reversed(history):
+            if entry["direction"] == "inbound" and entry["text"] != text:
+                previous_user_message = entry["text"]
+                break
+
         # 5. Route to tools if needed (web search / webpage extraction).
-        tool_result = await self.tool_router.route_and_execute(text)
+        tool_result = await self.tool_router.route_and_execute(
+            text,
+            previous_query=previous_user_message,
+        )
         result["tool_result"] = {
             "tool_name": tool_result.tool_name,
             "input_value": tool_result.input_value,

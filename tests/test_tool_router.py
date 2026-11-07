@@ -50,6 +50,10 @@ def test_detect_search_query(router):
     assert router.detect_search_query("search for latest Python release") == "latest Python release"
     assert router.detect_search_query("who won the super bowl 2026?") == "the super bowl 2026"
     assert router.detect_search_query("what is the latest stable version of node?") == "stable version of node"
+    assert router.detect_search_query("can you find all the hackathons hapennin in hyd this month") == "all the hackathons hapennin in hyd this month"
+    # Follow-up with previous query
+    assert router.detect_search_query("use searching", previous_query="hackathons in hyd") == "hackathons in hyd"
+    assert router.detect_search_query("search it", previous_query="weather in tokyo") == "weather in tokyo"
     # General chatter (should be None)
     assert router.detect_search_query("Hello there, how are you today?") is None
     assert router.detect_search_query("Write a python function to add two numbers") is None
