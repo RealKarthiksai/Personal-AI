@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     crawler_timeout_seconds: int = Field(default=15)
     crawler_max_content_chars: int = Field(default=4000)
 
+    # --- Official Integrations ------------------------------------------------
+    github_token: Optional[str] = Field(default=None)
+    reddit_client_id: Optional[str] = Field(default=None)
+    reddit_client_secret: Optional[str] = Field(default=None)
+    reddit_user_agent: str = Field(default="PersonalAI/1.0")
+    openalex_email: Optional[str] = Field(default=None)
+
     # --------------------------------------------------------------------------
     @property
     def allowed_telegram_user_ids(self) -> List[int]:

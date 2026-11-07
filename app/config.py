@@ -40,6 +40,13 @@ class Config:
         self.crawler_timeout_seconds = s.crawler_timeout_seconds
         self.crawler_max_content_chars = s.crawler_max_content_chars
 
+        # Official Integrations
+        self.github_token = s.github_token
+        self.reddit_client_id = s.reddit_client_id
+        self.reddit_client_secret = s.reddit_client_secret
+        self.reddit_user_agent = s.reddit_user_agent
+        self.openalex_email = s.openalex_email
+
     def is_telegram_configured(self) -> bool:
         return bool(self.telegram_bot_token)
 

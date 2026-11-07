@@ -13,6 +13,9 @@ from fastapi import FastAPI
 from app.api.routes import health as health_module
 from app.api.routes import ingestion as ingestion_module
 from app.api.routes import tools as tools_module
+from app.integrations.github import github_router
+from app.integrations.openalex import openalex_router
+from app.integrations.reddit import reddit_router
 from app.config import config
 from app.database import database
 from app.utils.logging import configure_logging, get_logger
@@ -31,6 +34,9 @@ app = FastAPI(
 app.include_router(health_module.router)
 app.include_router(tools_module.router)
 app.include_router(ingestion_module.router)
+app.include_router(github_router)
+app.include_router(openalex_router)
+app.include_router(reddit_router)
 
 
 @app.on_event("startup")
