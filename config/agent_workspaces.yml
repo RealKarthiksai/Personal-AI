@@ -1,0 +1,14 @@
+# Karna Agent Workspaces Allowlist Configuration
+# Each workspace specifies:
+#   alias: Short identifier used in commands and routing (e.g. karna)
+#   path: Absolute path to local workspace folder
+#   cloud_ok: true if cloud-backed agents (Antigravity) may access this folder (default: false)
+#   autonomous_ok: true if autonomous flags (cline -y, agy --dangerously-skip-permissions) may be used (default: false)
+#   allow_non_git: true if non-git folders may run edit jobs without git snapshots (default: false)
+
+workspaces:
+  - alias: karna
+    path: /home/vhanghar/Karna
+    cloud_ok: true
+    autonomous_ok: true
+    allow_non_git: false

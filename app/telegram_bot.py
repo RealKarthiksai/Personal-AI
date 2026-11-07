@@ -29,6 +29,7 @@ from telegram import Update
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -64,6 +65,25 @@ class _SenderAdapter:
 
     async def send_chat_action(self, to: str, action: str = "typing") -> bool:
         return await self._client.send_chat_action(chat_id=to, action=action)
+
+    async def send_message_with_keyboard(
+        self, to: str, text: str, reply_markup: dict, parse_mode: Optional[str] = "HTML"
+    ) -> Optional[str]:
+        return await self._client.send_message_with_keyboard(
+            chat_id=to, text=text, reply_markup=reply_markup, parse_mode=parse_mode
+        )
+
+    async def edit_message_text(
+        self, to: str, message_id: str, text: str, reply_markup: Optional[dict] = None, parse_mode: Optional[str] = "HTML"
+    ) -> bool:
+        return await self._client.edit_message_text(
+            chat_id=to, message_id=message_id, text=text, reply_markup=reply_markup, parse_mode=parse_mode
+        )
+
+    async def send_document(
+        self, to: str, document_path: str, caption: Optional[str] = None
+    ) -> Optional[str]:
+        return await self._client.send_document(chat_id=to, document_path=document_path, caption=caption)
 
 
 # Global references for graceful shutdown.
@@ -127,6 +147,57 @@ async def _dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _command_dispatcher(update, context, _service, sender)
 
 
+async def _callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Telegram inline keyboard button taps."""
+    query = update.callback_query
+    if query is None:
+        return
+    data = query.data or ""
+    user_id = str(query.from_user.id)
+
+    from app.security.authorization import is_telegram_user_authorized
+    try:
+        sender_int = int(user_id)
+        if not is_telegram_user_authorized(sender_int):
+            await query.answer("Unauthorized", show_alert=True)
+            return
+    except ValueError:
+        await query.answer("Unauthorized", show_alert=True)
+        return
+
+    if data.startswith("agent:"):
+        parts = data.split(":")
+        if len(parts) == 4:
+            _, action, short_id, nonce = parts
+            from app.agents.confirmations import consume_confirmation, render_confirmation_card
+            from app.agents.policy import get_workspace
+
+            success, updated_job, msg = consume_confirmation(
+                short_id=short_id,
+                nonce=nonce,
+                clicking_user_id=user_id,
+                action=action,
+            )
+            await query.answer(msg)
+
+            if success and updated_job:
+                if action == "mode":
+                    ws = get_workspace(updated_job.workspace_alias)
+                    if ws:
+                        new_text, new_kb = render_confirmation_card(updated_job, ws, nonce)
+                        await query.edit_message_text(text=new_text, parse_mode="HTML", reply_markup=new_kb)
+                elif action == "conf":
+                    status_line = f"✅ <b>Job Confirmed & Queued</b> (ID: <code>{updated_job.id[:8]}</code>)\n\nRunning in background..."
+                    await query.edit_message_text(text=status_line, parse_mode="HTML")
+                    from app.agents.jobs import get_job_manager
+                    asyncio.create_task(get_job_manager().dispatch_queued_job(updated_job.id))
+                elif action == "canc":
+                    status_line = f"❌ <b>Job Cancelled</b> (ID: <code>{updated_job.id[:8]}</code>)"
+                    await query.edit_message_text(text=status_line, parse_mode="HTML")
+        else:
+            await query.answer("Malformed callback payload")
+
+
 def _build_client() -> TelegramClient:
     return TelegramClient()
 
@@ -145,8 +216,12 @@ def build_application() -> Application:
         "feeds", "subscriptions", "watches", "monitors", "diff", "versions",
         "memory", "memories", "pin", "unpin", "forget", "forget_all",
         "export", "privacy", "link", "memory_debug",
+        "agent", "jobs", "job", "stop", "panic", "workspaces", "resume",
     ):
         application.add_handler(CommandHandler(cmd, _start_command))
+
+    # Inline button callback queries
+    application.add_handler(CallbackQueryHandler(_callback_query))
 
     # Catch-all for any other slash command
     application.add_handler(MessageHandler(filters.COMMAND, _start_command))

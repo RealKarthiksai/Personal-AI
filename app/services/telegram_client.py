@@ -219,3 +219,93 @@ class TelegramClient:
                 return resp.status_code == 200
         except Exception:
             return False
+
+    async def send_message_with_keyboard(
+        self,
+        chat_id: str,
+        text: str,
+        reply_markup: dict,
+        parse_mode: Optional[str] = "HTML",
+    ) -> Optional[str]:
+        """Send a text message with an inline keyboard attached."""
+        if not self.token:
+            return None
+        payload = self._payload(chat_id, text, parse_mode=parse_mode)
+        payload["reply_markup"] = reply_markup
+        url = self.base_url
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                resp = await client.post(url, json=payload, headers=self._headers())
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("ok"):
+                        res = data.get("result", {})
+                        return str(res.get("message_id"))
+                logger.warning("Telegram send_message_with_keyboard failed: HTTP %s: %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.error("Error in send_message_with_keyboard: %s", e)
+        return None
+
+    async def edit_message_text(
+        self,
+        chat_id: str,
+        message_id: str,
+        text: str,
+        reply_markup: Optional[dict] = None,
+        parse_mode: Optional[str] = "HTML",
+    ) -> bool:
+        """Edit an existing Telegram message in-place."""
+        if not self.token:
+            return False
+        url = f"https://api.telegram.org/bot{self.token}/editMessageText"
+        payload = {
+            "chat_id": chat_id,
+            "message_id": int(message_id),
+            "text": text,
+        }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                resp = await client.post(url, json=payload, headers=self._headers())
+                return resp.status_code == 200
+        except Exception as e:
+            logger.error("Error in edit_message_text: %s", e)
+            return False
+
+    async def send_document(
+        self,
+        chat_id: str,
+        document_path: str,
+        caption: Optional[str] = None,
+    ) -> Optional[str]:
+        """Send a file as a Telegram document attachment."""
+        if not self.token:
+            return None
+        url = f"https://api.telegram.org/bot{self.token}/sendDocument"
+        try:
+            import os
+            if not os.path.isfile(document_path):
+                logger.warning("send_document: file not found: %s", document_path)
+                return None
+
+            filename = os.path.basename(document_path)
+            with open(document_path, "rb") as f:
+                files = {"document": (filename, f, "text/plain")}
+                data = {"chat_id": chat_id}
+                if caption:
+                    data["caption"] = caption
+                    data["parse_mode"] = "HTML"
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(url, data=data, files=files)
+                    if resp.status_code == 200:
+                        res = resp.json().get("result", {})
+                        return str(res.get("message_id"))
+                    logger.warning("Telegram sendDocument failed: HTTP %s: %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.error("Error in send_document: %s", e)
+        return None

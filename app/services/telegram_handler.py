@@ -108,6 +108,7 @@ async def handle_command(
         "/status",
         "/memory", "/memories", "/pin", "/unpin", "/forget", "/forget_all",
         "/export", "/privacy", "/link", "/memory_debug",
+        "/agent", "/jobs", "/job", "/stop", "/panic", "/workspaces", "/resume",
     }
 
     if base_cmd in FORWARDED_COMMANDS:
@@ -130,6 +131,12 @@ async def handle_command(
             "/status - live system connectivity & ingestion status\n"
             "/feeds - view subscribed RSS/Atom feeds\n"
             "/watches - view monitored websites\n\n"
+            "🤖 <b>Agent Delegation:</b>\n"
+            "/agent &lt;cline|agy&gt; &lt;task&gt; - delegate task to agent\n"
+            "/jobs - list active & recent agent jobs\n"
+            "/workspaces - view allowlisted workspace directories\n"
+            "/stop - cancel active agent job\n"
+            "/panic - emergency kill switch\n\n"
             "🧠 <b>Memory & Profile:</b>\n"
             "/memory - view your profile & active memories\n"
             "/pin &lt;id&gt; - protect memory from time decay\n"

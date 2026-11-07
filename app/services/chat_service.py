@@ -272,6 +272,54 @@ class ChatService:
 
             return result
 
+        # Fast path: If mode is ACTION, send interactive confirmation card and bypass LLM entirely (0 LLM calls)
+        if tool_result.mode == ResponseMode.ACTION:
+            card_text = tool_result.action_card or tool_result.direct or tool_result.context_text or "Action required."
+            result["llm_response"] = card_text
+
+            repository.create_message(
+                external_message_id=None,
+                sender_id=sender_id,
+                direction="outbound",
+                text=card_text,
+                timestamp=None,
+                status="pending",
+                user_id=user_id,
+                channel=channel,
+            )
+
+            active_sender = sender if sender is not None else self.sender
+            message_id: Optional[str] = None
+            if active_sender is not None:
+                if tool_result.action_keyboard and hasattr(active_sender, "send_message_with_keyboard"):
+                    message_id = await active_sender.send_message_with_keyboard(
+                        to=sender_id,
+                        text=card_text,
+                        reply_markup=tool_result.action_keyboard,
+                    )
+                else:
+                    message_id = await active_sender.send_text(to=sender_id, text=card_text)
+
+            result["message_id"] = message_id
+            result["sent"] = bool(message_id)
+
+            if message_id:
+                repository.mark_processing(external_message_id, "delivered")
+                logger.info(
+                    "ACTION confirmation card delivered: %s",
+                    external_message_id,
+                    extra={"request_id": request_id, "message_id": external_message_id},
+                )
+            else:
+                repository.mark_processing(external_message_id, "send_failed")
+                logger.warning(
+                    "ACTION confirmation card send failed: %s",
+                    external_message_id,
+                    extra={"request_id": request_id, "message_id": external_message_id},
+                )
+
+            return result
+
         # 6. Call local LLM with active session history and grounded context.
         # Use active session history entries and compact past assistant replies to keep context concise
         llm_messages: List[dict] = []

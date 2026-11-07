@@ -76,6 +76,29 @@ class Config:
         self.memory_idle_extract_interval_minutes = s.memory_idle_extract_interval_minutes
         self.memory_idle_inactivity_minutes = s.memory_idle_inactivity_minutes
 
+        # Agent Delegation Subsystem
+        self.agents_enabled = s.agents_enabled
+        self.agents_panic = s.agents_panic
+        self.agents_allowed_user_ids = s.agents_allowed_user_ids
+        self.allowed_agent_user_ids = s.allowed_agent_user_ids
+        self.agent_workspaces_file = s.agent_workspaces_file
+        self.cline_bin = s.cline_bin
+        self.agy_bin = s.agy_bin
+        self.cline_extra_args = s.cline_extra_args
+        self.agy_extra_args = s.agy_extra_args
+        self.agent_confirm_ttl_s = s.agent_confirm_ttl_s
+        self.agent_job_timeout_s = s.agent_job_timeout_s
+        self.agent_idle_timeout_s = s.agent_idle_timeout_s
+        self.agent_max_concurrent = s.agent_max_concurrent
+        self.agent_output_max_bytes = s.agent_output_max_bytes
+        self.agent_progress_interval_s = s.agent_progress_interval_s
+        self.agent_llm_summary = s.agent_llm_summary
+        self.agent_run_as_user = s.agent_run_as_user
+        self.agent_env_allowlist = s.agent_env_allowlist
+
+    def is_agents_enabled(self) -> bool:
+        return bool(self.agents_enabled and not self.agents_panic)
+
     def is_telegram_configured(self) -> bool:
         return bool(self.telegram_bot_token)
 

@@ -94,6 +94,25 @@ class Settings(BaseSettings):
     memory_idle_extract_interval_minutes: int = Field(default=30)
     memory_idle_inactivity_minutes: int = Field(default=30)
 
+    # --- Agent Delegation Subsystem (Cline & Antigravity) ---------------------
+    agents_enabled: bool = Field(default=False)
+    agents_panic: bool = Field(default=False)
+    agents_allowed_user_ids: Optional[str] = Field(default=None)
+    agent_workspaces_file: str = Field(default="config/agent_workspaces.yml")
+    cline_bin: Optional[str] = Field(default=None)
+    agy_bin: Optional[str] = Field(default=None)
+    cline_extra_args: str = Field(default="")
+    agy_extra_args: str = Field(default="")
+    agent_confirm_ttl_s: int = Field(default=300)
+    agent_job_timeout_s: int = Field(default=1800)
+    agent_idle_timeout_s: int = Field(default=300)
+    agent_max_concurrent: int = Field(default=1)
+    agent_output_max_bytes: int = Field(default=5_000_000)
+    agent_progress_interval_s: int = Field(default=20)
+    agent_llm_summary: bool = Field(default=False)
+    agent_run_as_user: Optional[str] = Field(default=None)
+    agent_env_allowlist: str = Field(default="PATH,HOME,USER,SHELL,LANG,LC_ALL,TERM,ANTIGRAVITY_API_KEY")
+
     # --------------------------------------------------------------------------
     @property
     def allowed_telegram_user_ids(self) -> List[int]:
@@ -108,6 +127,23 @@ class Settings(BaseSettings):
                 ids.append(int(part))
             except ValueError:
                 # Silently ignore non-integer entries to keep the app bootable.
+                continue
+        return ids
+
+    @property
+    def allowed_agent_user_ids(self) -> List[int]:
+        """Return allowed agent Telegram user IDs; defaults to allowed_telegram_user_ids if unset."""
+        raw = self.agents_allowed_user_ids
+        if raw is None or not raw.strip():
+            return self.allowed_telegram_user_ids
+        ids: List[int] = []
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                ids.append(int(part))
+            except ValueError:
                 continue
         return ids
 

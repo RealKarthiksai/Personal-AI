@@ -15,6 +15,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import config
 from app.scheduler.jobs import (
+    job_agents_reaper,
     job_check_monitored_websites,
     job_memory_idle,
     job_memory_nightly,
@@ -119,8 +120,19 @@ class SchedulerManager:
             max_instances=1,
         )
 
+        # 8. Agent Maintenance & Stale Job Reaper (every 10m)
+        self.scheduler.add_job(
+            job_agents_reaper,
+            trigger=IntervalTrigger(minutes=10),
+            id="agents_maintenance_reaper",
+            name="Agent Confirmations & Logs Maintenance",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+
         logger.info(
-            "Registered default background jobs | rss=%dm | github=%dh | openalex=%dh | reddit=%dh | monitoring=%dh | memory_nightly=21:30UTC | memory_idle=30m",
+            "Registered default background jobs | rss=%dm | github=%dh | openalex=%dh | reddit=%dh | monitoring=%dh | memory_nightly=21:30UTC | memory_idle=30m | agents_reaper=10m",
             rss_mins,
             gh_hours,
             oa_hours,

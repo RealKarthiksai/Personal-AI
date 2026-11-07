@@ -277,7 +277,62 @@ CREATE TABLE IF NOT EXISTS memory_jobs_log (
 CREATE INDEX IF NOT EXISTS idx_memory_jobs_job ON memory_jobs_log(job, started_at DESC);
 """
 
+AGENT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS agent_jobs (
+    id TEXT PRIMARY KEY,
+    sender_id TEXT NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'telegram',
+    agent TEXT NOT NULL,
+    workspace_alias TEXT NOT NULL,
+    workspace_path TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('read_only', 'edit')),
+    autonomous INTEGER NOT NULL DEFAULT 0,
+    task_text TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending_confirm', 'queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out', 'interrupted', 'rejected')),
+    pid INTEGER,
+    pgid INTEGER,
+    conversation_id TEXT,
+    snapshot_ref TEXT,
+    branch TEXT,
+    exit_code INTEGER,
+    output_path TEXT,
+    output_summary TEXT,
+    diff_stat TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    confirmed_at TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_status ON agent_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_agent_jobs_created ON agent_jobs(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_confirmations (
+    id TEXT PRIMARY KEY,
+    job_id TEXT NOT NULL REFERENCES agent_jobs(id) ON DELETE CASCADE,
+    sender_id TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    telegram_message_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_confirmations_job ON agent_confirmations(job_id);
+CREATE INDEX IF NOT EXISTS idx_agent_confirmations_nonce ON agent_confirmations(nonce);
+
+CREATE TABLE IF NOT EXISTS agent_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    sender_id TEXT NOT NULL,
+    event TEXT NOT NULL,
+    job_id TEXT,
+    details TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_agent_audit_ts ON agent_audit(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_audit_job ON agent_audit(job_id);
+"""
+
 _init_lock: bool = False
+_last_initialized_url: Optional[str] = None
 
 
 def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
@@ -311,14 +366,15 @@ def transaction(db_path: Optional[str] = None) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def init_db() -> None:
+def init_db(force: bool = False) -> None:
     """Create tables if they do not exist and apply migrations. Safe to call on every startup."""
-    global _init_lock
-    if _init_lock:
+    global _init_lock, _last_initialized_url
+    if not force and _init_lock and _last_initialized_url == config.database_url:
         return
     with transaction() as conn:
         conn.executescript(SCHEMA)
         conn.executescript(MEMORY_SCHEMA)
+        conn.executescript(AGENT_SCHEMA)
 
         # Migration: Add first_indexed_at & published_at_trusted to external_records if missing
         cols_ext = [r["name"] for r in conn.execute("PRAGMA table_info(external_records)").fetchall()]
@@ -354,4 +410,5 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS ix_delivered ON delivered_items(user_id, record_id, delivered_at)")
 
     _init_lock = True
+    _last_initialized_url = config.database_url
     logger.info("Database schema initialized with migrations", extra={"request_id": "system", "message_id": "system"})

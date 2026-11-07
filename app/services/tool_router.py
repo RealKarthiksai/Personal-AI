@@ -45,6 +45,16 @@ from app.memory.commands import (
     handle_pin_unpin,
     handle_privacy,
 )
+from app.agents.commands import (
+    handle_agent_status_command,
+    handle_job_detail_command,
+    handle_jobs_command,
+    handle_panic_command,
+    handle_resume_command,
+    handle_stop_command,
+    handle_workspaces_command,
+)
+from app.agents.router import dispatch_agent_request, parse_deterministic_request
 from app.memory.profile import get_user_profile_summary
 from app.services.extractor_service import ExtractorService, extractor_service
 from app.services.planner_service import PlannerService, planner_service
@@ -114,6 +124,7 @@ class ResponseMode(str, Enum):
     GROUNDED_TEXT = "grounded_text"  # LLM writes free text; links validated post-hoc against allowed URLs
     SELECT = "select"  # LLM selects candidate numbers; Python renders verified cards from DB
     PASSTHROUGH = "passthrough"  # Conversational text without search context
+    ACTION = "action"  # Interactive confirmation card with inline keyboard; 0 LLM calls
 
 
 @dataclass(frozen=True)
@@ -141,6 +152,9 @@ class ToolExecutionResult:
     status_message: Optional[str] = None
     mode: ResponseMode = ResponseMode.PASSTHROUGH
     direct: Optional[str] = None
+    action_card: Optional[str] = None
+    action_keyboard: Optional[dict] = None
+    action_job: Optional[Any] = None
     candidates: List[Candidate] = field(default_factory=list)
     manifest: Optional[RetrievalManifest] = None
     allowed_urls: frozenset[str] = frozenset()
@@ -148,6 +162,8 @@ class ToolExecutionResult:
     def __post_init__(self) -> None:
         if self.context_text is None and self.direct is not None:
             self.context_text = self.direct
+        elif self.context_text is None and self.action_card is not None:
+            self.context_text = self.action_card
         if self.tool_name == "daily_briefing" and self.input_value is None:
             self.input_value = "daily_briefing"
 
@@ -499,6 +515,36 @@ class ToolRouter:
                     status_message=None,
                 )
 
+            # Agent Delegation Commands (0 LLM calls)
+            if cmd == "workspaces":
+                return handle_workspaces_command()
+
+            if cmd == "jobs":
+                return handle_jobs_command(sender_id=sender_id)
+
+            if cmd == "job":
+                return handle_job_detail_command(args or "")
+
+            if cmd == "stop":
+                return await handle_stop_command(args or "", sender_id=sender_id or "default")
+
+            if cmd == "panic":
+                return await handle_panic_command(sender_id=sender_id or "default")
+
+            if cmd == "resume":
+                return handle_resume_command(args or "", sender_id=sender_id or "default")
+
+            if cmd == "agent":
+                if args and args.strip().lower() == "status":
+                    return handle_agent_status_command()
+                agent_req = parse_deterministic_request(clean_text)
+                if agent_req is not None:
+                    return dispatch_agent_request(agent_req, sender_id=sender_id or "default")
+                return ToolExecutionResult(
+                    mode=ResponseMode.DIRECT,
+                    direct="Usage: <code>/agent &lt;cline|agy&gt; [workspace] &lt;task&gt;</code> or <code>/agent status</code>",
+                )
+
             if cmd not in ("briefing", "digest", "search", "read"):
                 unknown_msg = (
                     f"Unknown command <code>/{cmd}</code>.\n\n"
@@ -513,6 +559,11 @@ class ToolRouter:
                     f"• <code>/export</code> - Download personal memory export\n"
                     f"• <code>/privacy</code> - Local memory & privacy policy\n"
                     f"• <code>/link</code> - Link another channel identity\n"
+                    f"• <code>/agent &lt;cline|agy&gt; &lt;task&gt;</code> - Delegate coding/ops task\n"
+                    f"• <code>/jobs</code> - List delegated agent jobs\n"
+                    f"• <code>/workspaces</code> - List allowlisted folders\n"
+                    f"• <code>/stop</code> - Cancel active agent job\n"
+                    f"• <code>/panic</code> - Emergency agent kill switch\n"
                     f"• <code>/search &lt;query&gt;</code> - Web search\n"
                     f"• <code>/read &lt;url&gt;</code> - Read and extract webpage content"
                 )
@@ -522,6 +573,13 @@ class ToolRouter:
                     direct=unknown_msg,
                     status_message=None,
                 )
+
+        # ----------------------------------------------------------------------
+        # 1b. Deterministic Agent Task Delegation (0 LLM Calls)
+        # ----------------------------------------------------------------------
+        agent_req = parse_deterministic_request(clean_text)
+        if agent_req is not None:
+            return dispatch_agent_request(agent_req, sender_id=sender_id or "default")
 
         # ----------------------------------------------------------------------
         # 2. System-Directed Operational Queries (0 LLM Calls)

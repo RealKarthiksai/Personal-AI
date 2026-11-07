@@ -350,3 +350,52 @@ async def job_memory_idle() -> Dict[str, Any]:
         )
         return {"error": str(exc)}
 
+
+async def job_agents_reaper() -> Dict[str, Any]:
+    """Periodic maintenance: clean up expired confirmations and old job logs."""
+    from datetime import datetime, timedelta, timezone
+    import shutil
+
+    now = datetime.now(timezone.utc)
+    expired_threshold = (now - timedelta(seconds=config.agent_confirm_ttl_s)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    retention_threshold = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    reaped_confirmations = 0
+    with transaction() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE agent_jobs
+            SET status = 'rejected', error = 'Confirmation expired'
+            WHERE status = 'pending_confirm' AND created_at < ?
+            """,
+            (expired_threshold,),
+        )
+        reaped_confirmations = cursor.rowcount
+
+    # Cleanup logs older than 7 days
+    cleaned_logs = 0
+    jobs_dir = os.path.join("data", "agent_jobs")
+    if os.path.isdir(jobs_dir):
+        cutoff_ts = (now - timedelta(days=7)).timestamp()
+        for item in os.listdir(jobs_dir):
+            item_path = os.path.join(jobs_dir, item)
+            try:
+                if os.path.isdir(item_path):
+                    mtime = os.path.getmtime(item_path)
+                    if mtime < cutoff_ts:
+                        shutil.rmtree(item_path, ignore_errors=True)
+                        cleaned_logs += 1
+            except Exception:
+                pass
+
+    logger.info(
+        "Scheduled agents maintenance completed | reaped_confirmations=%d | cleaned_logs=%d",
+        reaped_confirmations,
+        cleaned_logs,
+    )
+    return {
+        "reaped_confirmations": reaped_confirmations,
+        "cleaned_logs": cleaned_logs,
+    }
+
+
