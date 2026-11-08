@@ -263,38 +263,32 @@ def get_system_capabilities_help() -> str:
     try:
         from app.agents.policy import load_workspaces
         workspaces = load_workspaces()
-        ws_items = [f"<code>{w.alias}</code> (<code>{w.path}</code>)" for w in workspaces.values()]
-        ws_str = ", ".join(ws_items) if ws_items else "<code>karna</code> (/home/vhanghar/Karna)"
+        ws_items = [f"<code>{w.alias}</code>" for w in workspaces.values()]
+        ws_str = ", ".join(ws_items) if ws_items else "<code>karna</code>"
     except Exception:
-        ws_str = "<code>karna</code> (/home/vhanghar/Karna)"
+        ws_str = "<code>karna</code>"
 
     return (
-        "🛡️ <b>Karna System Capabilities & Operations</b>\n\n"
-        "I am your local AI companion and personal operations assistant. Here are all the operations I can perform on your machine:\n\n"
-        "🤖 <b>1. Local Agent Task Delegation (Cline & Antigravity)</b>\n"
-        "• Delegate coding, terminal commands, refactoring, and directory analysis to local agent CLIs:\n"
-        "  - <b>Cline CLI:</b> Headless autonomous coding & ops agent\n"
-        "  - <b>Antigravity CLI:</b> Google's agent CLI with multimodal & reasoning capabilities\n"
-        f"• <b>Approved Workspaces:</b> {ws_str}\n"
-        "• <b>Agent Commands:</b>\n"
-        "  - <code>/agent &lt;cline|agy&gt; [workspace] &lt;task&gt;</code> — Dispatch an agent task\n"
-        "  - <code>/workspaces</code> — List configured workspaces and policies\n"
-        "  - <code>/jobs</code> — List active and historical agent jobs\n"
-        "  - <code>/job &lt;id&gt;</code> — View job logs, output summary, and git diff\n"
-        "  - <code>/stop</code> — Terminate the active running agent process group\n"
-        "  - <code>/panic</code> — Emergency kill switch to abort all agent executions\n"
-        "  - <i>Natural phrases:</i> e.g. <code>ask cline to inspect folder structure in karna</code>\n\n"
+        "🛡️ <b>Karna System Capabilities</b>\n\n"
+        "I am your local AI companion and personal operations assistant. Here is what I can do on your machine:\n\n"
+        "🤖 <b>1. Local Agent Delegation (Cline & Antigravity)</b>\n"
+        f"Delegate terminal, coding, and git tasks in approved workspaces ({ws_str}).\n"
+        "• <code>/agent &lt;cline|agy&gt; &lt;task&gt;</code> — Dispatch task to local agent\n"
+        "• <code>/workspaces</code> — List configured workspace paths & policies\n"
+        "• <code>/jobs</code> & <code>/job &lt;id&gt;</code> — View active jobs, logs & git diffs\n"
+        "• <code>/stop</code> & <code>/panic</code> — Terminate running agent jobs\n"
+        "• <i>Natural Phrasing:</i> e.g. <code>ask cline to inspect folder structure in karna</code>\n\n"
         "🔍 <b>2. Web Search & Deep Extraction</b>\n"
-        "• <code>/search &lt;query&gt;</code> — Real-time web research via local SearXNG\n"
-        "• <code>/read &lt;url&gt;</code> — Deep JavaScript webpage reader & crawler (Crawl4AI)\n"
-        "• <code>/briefing</code> — Daily intelligence briefing compiled from your sources\n\n"
+        "• <code>/search &lt;query&gt;</code> — Live web research via local SearXNG\n"
+        "• <code>/read &lt;url&gt;</code> — Webpage crawler & reader via Crawl4AI\n"
+        "• <code>/briefing</code> — Daily intelligence briefing\n\n"
         "📡 <b>3. Subscriptions & Health Monitoring</b>\n"
-        "• <code>/status</code> — System status, API quotas, and health check\n"
-        "• <code>/feeds</code> — List and monitor active RSS feeds\n"
-        "• <code>/watches</code> — Monitor web pages for changes and content diffs\n\n"
+        "• <code>/status</code> — System health, API quotas, and ingestion stats\n"
+        "• <code>/feeds</code> — Subscribed RSS feed monitor\n"
+        "• <code>/watches</code> — Website change detection alerts\n\n"
         "🧠 <b>4. Long-Term Memory & Profile</b>\n"
-        "• <code>/memory</code> — View long-term facts, preferences, and profile\n"
-        "• <code>/pin &lt;id&gt;</code> & <code>/forget &lt;id&gt;</code> — Manage stored memories\n"
+        "• <code>/memory</code> — View stored profile and memories\n"
+        "• <code>/pin &lt;id&gt;</code> & <code>/forget &lt;id&gt;</code> — Manage memory facts\n"
         "• <code>/export</code> & <code>/privacy</code> — Memory data export and privacy policy"
     )
 

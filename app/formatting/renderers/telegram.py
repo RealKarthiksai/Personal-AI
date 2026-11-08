@@ -27,8 +27,15 @@ from app.formatting.renderers.base import split_into_chunks
 TELEGRAM_DIVIDER = "──────────────────────────"
 
 
+VALID_TG_TAGS_REGEX = re.compile(
+    r"</?(?:b|strong|i|em|code|pre|s|strike|del|u)\b[^>]*>|<a\s+href=[\"'][^\"']*[\"'][^>]*>|</a>",
+    re.IGNORECASE,
+)
+EXISTING_ENTITY_REGEX = re.compile(r"&(?:lt|gt|amp|quot|apos|#\d+|#x[0-9a-fA-F]+);")
+
+
 def format_telegram_inline(text: str) -> str:
-    """Safely convert markdown inline tokens to Telegram HTML entities."""
+    """Safely convert markdown inline tokens to Telegram HTML entities, preserving valid HTML tags."""
     if not text:
         return ""
 
@@ -52,6 +59,26 @@ def format_telegram_inline(text: str) -> str:
 
     stashed = re.sub(r"`([^`]+)`", _stash_code, stashed)
 
+    # Protect pre-existing valid Telegram HTML tags
+    valid_tags: List[str] = []
+
+    def _stash_tag(m: re.Match) -> str:
+        idx = len(valid_tags)
+        valid_tags.append(m.group(0))
+        return f"@@TG_TAG_{idx}@@"
+
+    stashed = VALID_TG_TAGS_REGEX.sub(_stash_tag, stashed)
+
+    # Protect pre-existing HTML entities (&lt;, &gt;, &amp;, etc.)
+    entities: List[str] = []
+
+    def _stash_ent(m: re.Match) -> str:
+        idx = len(entities)
+        entities.append(m.group(0))
+        return f"@@TG_ENT_{idx}@@"
+
+    stashed = EXISTING_ENTITY_REGEX.sub(_stash_ent, stashed)
+
     # Escape HTML special characters in plain text
     escaped = html.escape(stashed, quote=False)
 
@@ -63,6 +90,14 @@ def format_telegram_inline(text: str) -> str:
 
     # Convert strikethrough ~~text~~ -> <s>text</s>
     escaped = re.sub(r"~~(.*?)~~", r"<s>\1</s>", escaped)
+
+    # Restore entities
+    for idx, ent in enumerate(entities):
+        escaped = escaped.replace(f"@@TG_ENT_{idx}@@", ent)
+
+    # Restore pre-existing valid HTML tags
+    for idx, tag in enumerate(valid_tags):
+        escaped = escaped.replace(f"@@TG_TAG_{idx}@@", tag)
 
     # Restore inline code as <code>...</code>
     for idx, code_content in enumerate(inline_codes):

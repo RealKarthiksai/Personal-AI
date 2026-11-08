@@ -45,14 +45,14 @@ async def test_slash_help_and_capabilities_direct():
     res1 = await tool_router.route_and_execute("/help")
     assert res1.mode == ResponseMode.DIRECT
     assert res1.tool_name == "help"
-    assert "Karna System Capabilities & Operations" in res1.direct
+    assert "Karna System Capabilities" in res1.direct
     assert "Cline & Antigravity" in res1.direct
 
     res2 = await tool_router.route_and_execute("can you tell me all the operations u can perform in my system")
     assert res2.mode == ResponseMode.DIRECT
     assert res2.tool_name == "help"
-    assert "Karna System Capabilities & Operations" in res2.direct
-    assert "Local Agent Task Delegation" in res2.direct
+    assert "Karna System Capabilities" in res2.direct
+    assert "Local Agent Delegation" in res2.direct
 
 
 @pytest.mark.asyncio
