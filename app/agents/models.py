@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -17,9 +18,10 @@ class AgentKind(str, Enum):
     def _missing_(cls, value: object) -> Optional[AgentKind]:
         if isinstance(value, str):
             val_clean = value.strip().lower()
-            if val_clean in ("agy", "antigravity"):
+            val_clean = re.sub(r"\s*(?:2(?:\.0)?|v\d+)\b", "", val_clean).strip()
+            if val_clean in ("agy", "antigravity", "antigravty"):
                 return cls.ANTIGRAVITY
-            if val_clean == "cline":
+            if val_clean in ("cline", "clline", "clien"):
                 return cls.CLINE
         return None
 

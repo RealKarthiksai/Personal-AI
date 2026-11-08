@@ -28,29 +28,39 @@ def _get_router_types():
 
 # Regex patterns for deterministic agent invocation
 SLASH_AGENT_REGEX = re.compile(
-    r"^/agent\s+(?P<agent>cline|clline|clien|agy|antigravity|antigravty)(?:\s+(?P<workspace>[a-zA-Z0-9_\-]+))?\s+(?P<task>.+)$",
+    r"^/agent\s+(?P<agent>cline|clline|clien|antigravity(?:\s*2(?:\.0)?)?|agy(?:\s*2(?:\.0)?)?|antigravty)(?:\s+(?P<workspace>[a-zA-Z0-9_\-]+))?\s+(?P<task>.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 
 NATURAL_AGENT_PATTERNS = [
+    # Direct address: "antigravity 2.0, here's what I need you to do: <task>", "cline: run tests", "antigravity: extract frontend"
+    re.compile(
+        r"^(?:(?:hey|hi|hello)\s+)?(?P<agent>cline|clline|clien|antigravity(?:\s*2(?:\.0)?)?|agy(?:\s*2(?:\.0)?)?|antigravty)\s*[,:]\s*(?:(?:here(?:'s|’s| is)\s+(?:what\s+)?(?:i\s+need\s+you\s+to\s+do|i\s+want\s+you\s+to\s+do|to\s+do)|please|can\s+you)\s*[:,\-]?\s*)?(?P<task>.+)$",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    # "give/send a message/instructions/task to antigravity 2.0 to/that/for <task>"
+    re.compile(
+        r"^(?:(?:can|could)\s+you\s+|please\s+)?(?:give|send|pass)\s+(?:a\s+)?(?:message|instructions?|prompt|task)\s+to\s+(?P<agent>cline|clline|clien|antigravity(?:\s*2(?:\.0)?)?|agy(?:\s*2(?:\.0)?)?|antigravty)\s+(?:(?:to\s+|that\s+|so\s+(?:it|he|she)\s+can\s+|for\s+|:\s*))*(?P<task>.+)$",
+        re.IGNORECASE | re.DOTALL,
+    ),
     # "ask/tell/have/get cline to run tests in karna", "ask agy to refactor"
     re.compile(
-        r"^(?:(?:can|could)\s+you\s+|please\s+)?(?:ask|tell|have|get|instruct)\s+(?P<agent>cline|clline|clien|agy|antigravity|antigravty)\s+(?:to\s+|for\s+)?(?:(?:in|on|for)\s+(?P<workspace>[a-zA-Z0-9_\-]+)\s+)?(?P<task>.+)$",
+        r"^(?:(?:can|could)\s+you\s+|please\s+)?(?:ask|tell|have|get|instruct)\s+(?P<agent>cline|clline|clien|antigravity(?:\s*2(?:\.0)?)?|agy(?:\s*2(?:\.0)?)?|antigravty)\s+(?:to\s+|for\s+)?(?:(?:in|on|for)\s+(?P<workspace>[a-zA-Z0-9_\-]+)\s+)?(?P<task>.+)$",
         re.IGNORECASE | re.DOTALL,
     ),
     # "use/run antigravity to update the scheduler in karna"
     re.compile(
-        r"^(?:(?:can|could)\s+you\s+|please\s+)?(?:use|run(?:\s+with)?)\s+(?P<agent>cline|clline|clien|agy|antigravity|antigravty)\s+(?:to\s+|for\s+)?(?:(?:in|on|for)\s+(?P<workspace>[a-zA-Z0-9_\-]+)\s+)?(?P<task>.+)$",
+        r"^(?:(?:can|could)\s+you\s+|please\s+)?(?:use|run(?:\s+with)?)\s+(?P<agent>cline|clline|clien|antigravity(?:\s*2(?:\.0)?)?|agy(?:\s*2(?:\.0)?)?|antigravty)\s+(?:to\s+|for\s+)?(?:(?:in|on|for)\s+(?P<workspace>[a-zA-Z0-9_\-]+)\s+)?(?P<task>.+)$",
         re.IGNORECASE | re.DOTALL,
     ),
     # "with cline: run tests"
     re.compile(
-        r"^with\s+(?P<agent>cline|clline|clien|agy|antigravity|antigravty)\s*:\s*(?P<task>.+)$",
+        r"^with\s+(?P<agent>cline|clline|clien|antigravity(?:\s*2(?:\.0)?)?|agy(?:\s*2(?:\.0)?)?|antigravty)\s*:\s*(?P<task>.+)$",
         re.IGNORECASE | re.DOTALL,
     ),
     # "send messages/tasks to antigravity and/or cline ... <task>"
     re.compile(
-        r"^(?:.*?\b(?:send(?:\s+messages?|\s+tasks?)?\s+to|(?:delegate\s+to))\s+)(?P<agent>cline|clline|clien|agy|antigravity|antigravty)(?:(?:\s+and\s+|\s*,\s*|\s+or\s+)(?:cline|clline|clien|agy|antigravity|antigravty))*\s+(?:(?:to|that|and)\s+|i\s+want\s+(?:you\s+to\s+)?|please\s+|:\s*)*(?P<task>.+)$",
+        r"^(?:.*?\b(?:send(?:\s+messages?|\s+tasks?)?\s+to|(?:delegate\s+to))\s+)(?P<agent>cline|clline|clien|antigravity(?:\s*2(?:\.0)?)?|agy(?:\s*2(?:\.0)?)?|antigravty)(?:(?:\s+and\s+|\s*,\s*|\s+or\s+)(?:cline|clline|clien|antigravity(?:\s*2(?:\.0)?)?|agy(?:\s*2(?:\.0)?)?|antigravty))*\s+(?:(?:to|that|and)\s+|i\s+want\s+(?:you\s+to\s+)?|please\s+|:\s*)*(?P<task>.+)$",
         re.IGNORECASE | re.DOTALL,
     ),
 ]
@@ -64,6 +74,7 @@ EDIT_INTENT_KEYWORDS = re.compile(
 def parse_agent_kind(agent_str: str) -> Optional[AgentKind]:
     """Map string representation to AgentKind enum."""
     norm = agent_str.strip().lower()
+    norm = re.sub(r"\s*(?:2(?:\.0)?|v\d+)\b", "", norm).strip()
     if norm in ("cline", "clline", "clien"):
         return AgentKind.CLINE
     elif norm in ("agy", "antigravity", "antigravty"):
@@ -73,7 +84,7 @@ def parse_agent_kind(agent_str: str) -> Optional[AgentKind]:
 
 def parse_deterministic_request(text: str) -> Optional[DispatchRequest]:
     """Parse explicit agent commands and high-confidence natural language patterns."""
-    raw = text.strip()
+    raw = text.strip().replace("’", "'").replace("‘", "'")
 
     # 1. /agent slash command
     m = SLASH_AGENT_REGEX.match(raw)
@@ -116,8 +127,12 @@ def parse_deterministic_request(text: str) -> Optional[DispatchRequest]:
 
             if agent and task:
                 if not workspace_alias:
-                    for ws_key in workspaces.keys():
-                        if re.search(rf"\b(?:in|on|at|for)\s+({re.escape(ws_key)})\b", task, re.IGNORECASE):
+                    for ws_key, ws_cfg in workspaces.items():
+                        if (
+                            ws_cfg.path.lower() in task.lower()
+                            or re.search(rf"\b(?:in|on|at|for|from)\s+({re.escape(ws_key)})\b", task, re.IGNORECASE)
+                            or re.search(rf"\b{re.escape(ws_key)}\b", task, re.IGNORECASE)
+                        ):
                             workspace_alias = ws_key
                             break
 

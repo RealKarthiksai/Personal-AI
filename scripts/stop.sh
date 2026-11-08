@@ -29,6 +29,14 @@ stop_llama() {
   fi
 }
 
+stop_frontend() {
+  if pkill -f "vite.*5173" 2>/dev/null; then
+    echo "Stopped frontend visualizer service."
+  else
+    echo "Frontend visualizer service was not running."
+  fi
+}
+
 case "$TARGET" in
   api)
     stop_api
@@ -39,13 +47,17 @@ case "$TARGET" in
   llama)
     stop_llama
     ;;
+  frontend)
+    stop_frontend
+    ;;
   all)
     stop_api
     stop_bot
     stop_llama
+    stop_frontend
     ;;
   *)
-    echo "Usage: $0 [all|api|bot|llama]" >&2
+    echo "Usage: $0 [all|api|bot|llama|frontend]" >&2
     exit 1
     ;;
 esac

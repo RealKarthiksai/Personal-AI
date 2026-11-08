@@ -54,6 +54,7 @@ from app.agents.commands import (
     handle_stop_command,
     handle_workspaces_command,
 )
+from app.agents.models import DispatchRequest
 from app.agents.router import dispatch_agent_request, parse_deterministic_request
 from app.memory.profile import get_user_profile_summary
 from app.services.extractor_service import ExtractorService, extractor_service
@@ -118,6 +119,11 @@ OPS_DIFF_PATTERNS = [
 OPS_HELP_PATTERNS = [
     r"^(?:/help|help)$",
     r"\b(?:what\s+can\s+you\s+do|what\s+operations\s+can\s+you\s+perform|what\s+are\s+your\s+capabilities|all\s+the\s+operations\s+(?:u|you)\s+can\s+perform|what\s+(?:system\s+)?operations\s+(?:can|do)\s+you\s+(?:support|have|perform))\b",
+]
+OPS_FRONTEND_PATTERNS = [
+    r"^(?:/frontend|frontend)$",
+    r"\b(?:(?:run|start|open|show|view|launch)\s+)?(?:the\s+)?front[\s\-]?end(?:\s+(?:status|url|app|canvas))?\b",
+    r"\b(?:is\s+(?:the\s+)?front[\s\-]?end\s+running)\b",
 ]
 
 
@@ -289,8 +295,42 @@ def get_system_capabilities_help() -> str:
         "🧠 <b>4. Long-Term Memory & Profile</b>\n"
         "• <code>/memory</code> — View stored profile and memories\n"
         "• <code>/pin &lt;id&gt;</code> & <code>/forget &lt;id&gt;</code> — Manage memory facts\n"
-        "• <code>/export</code> & <code>/privacy</code> — Memory data export and privacy policy"
+        "• <code>/export</code> & <code>/privacy</code> — Memory data export and privacy policy\n\n"
+        "🖥️ <b>5. Frontend Visualizer</b>\n"
+        "• <code>/frontend</code> — Interactive Agent Blueprint visualizer (React Flow canvas on port 5173)"
     )
+
+
+async def get_frontend_status() -> str:
+    """Check if Vite dev server on port 5173 is responding."""
+    is_live = False
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=0.6) as client:
+            resp = await client.get("http://127.0.0.1:5173/")
+            if resp.status_code == 200:
+                is_live = True
+    except Exception:
+        is_live = False
+
+    if is_live:
+        return (
+            "🖥️ <b>Karna Frontend Visualizer is Live</b>\n\n"
+            "• <b>Status:</b> 🟢 Running on port 5173\n"
+            "• <b>URL:</b> <a href=\"http://localhost:5173\">http://localhost:5173</a>\n"
+            "• <b>Workspace:</b> <code>/home/vhanghar/Karna/frontend</code>\n"
+            "• <b>Stack:</b> React 18 + Vite + Tailwind + React Flow (@xyflow)\n\n"
+            "Open <a href=\"http://localhost:5173\">http://localhost:5173</a> in your browser to view the interactive visualizer."
+        )
+    else:
+        return (
+            "🖥️ <b>Karna Frontend Visualizer</b>\n\n"
+            "• <b>Status:</b> 🔴 Offline\n"
+            "• <b>Workspace:</b> <code>/home/vhanghar/Karna/frontend</code>\n\n"
+            "To launch the frontend dev server:\n"
+            "• Terminal: <code>./scripts/start_frontend.sh</code> or <code>cd /home/vhanghar/Karna/frontend && npm run dev</code>\n"
+            "• Or delegate: <code>/agent cline start frontend in karna</code>"
+        )
 
 
 class ToolRouter:
@@ -592,12 +632,22 @@ class ToolRouter:
                     direct="Usage: <code>/agent &lt;cline|agy&gt; [workspace] &lt;task&gt;</code> or <code>/agent status</code>",
                 )
 
+            if cmd == "frontend":
+                body = await get_frontend_status()
+                return ToolExecutionResult(
+                    tool_name="frontend",
+                    mode=ResponseMode.DIRECT,
+                    direct=body,
+                    status_message="Checking frontend status...",
+                )
+
             if cmd not in ("briefing", "digest", "search", "read"):
                 unknown_msg = (
                     f"Unknown command <code>/{cmd}</code>.\n\n"
                     f"<b>Available commands:</b>\n"
                     f"• <code>/help</code> - System capabilities & command guide\n"
                     f"• <code>/status</code> - System status & ingestion sources\n"
+                    f"• <code>/frontend</code> - Frontend visualizer status & URL\n"
                     f"• <code>/feeds</code> - Active RSS feed subscriptions\n"
                     f"• <code>/watches</code> - Monitored web pages & change alerts\n"
                     f"• <code>/briefing</code> - Daily intelligence briefing\n"
@@ -705,6 +755,15 @@ class ToolRouter:
                 mode=ResponseMode.DIRECT,
                 direct=get_system_capabilities_help(),
                 status_message="Loading capabilities...",
+            )
+
+        if any(re.search(p, clean_text, re.IGNORECASE) for p in OPS_FRONTEND_PATTERNS):
+            body = await get_frontend_status()
+            return ToolExecutionResult(
+                tool_name="frontend",
+                mode=ResponseMode.DIRECT,
+                direct=body,
+                status_message="Checking frontend status...",
             )
 
         # ----------------------------------------------------------------------

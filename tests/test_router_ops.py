@@ -56,6 +56,20 @@ async def test_slash_help_and_capabilities_direct():
 
 
 @pytest.mark.asyncio
+async def test_slash_frontend_direct():
+    res1 = await tool_router.route_and_execute("/frontend")
+    assert res1.mode == ResponseMode.DIRECT
+    assert res1.tool_name == "frontend"
+    assert "Karna Frontend Visualizer" in res1.direct
+    assert "port 5173" in res1.direct or "frontend" in res1.direct
+
+    res2 = await tool_router.route_and_execute("is the frontend running?")
+    assert res2.mode == ResponseMode.DIRECT
+    assert res2.tool_name == "frontend"
+    assert "Karna Frontend Visualizer" in res2.direct
+
+
+@pytest.mark.asyncio
 async def test_slash_feeds_direct():
     result = await tool_router.route_and_execute("/feeds")
     assert result.mode == ResponseMode.DIRECT

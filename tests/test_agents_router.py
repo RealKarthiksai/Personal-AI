@@ -130,3 +130,39 @@ async def test_constrained_llm_fallback(monkeypatch):
     assert agent == AgentKind.CLINE
     assert ws == "karna"
     assert mock_llm.generate.await_count == 1
+
+
+def test_direct_address_and_antigravity_2_parsing():
+    """Verify direct address and Antigravity 2.0 / smart quote parsing."""
+    user_msg = (
+        "Antigravity 2.0, here’s what I need you to do:\n"
+        "1. Extract the frontend code from /home/vhanghar/Karna/ (HTML, CSS, JS).\n"
+        "2. Run it in your browser or deploy to"
+    )
+    req = parse_deterministic_request(user_msg)
+    assert req is not None
+    assert req.agent == AgentKind.ANTIGRAVITY
+    assert req.workspace_alias == "karna"
+    assert "Extract the frontend code" in req.task_text
+
+    # Slash command with version suffix
+    req_slash = parse_deterministic_request("/agent agy 2.0 karna run build")
+    assert req_slash is not None
+    assert req_slash.agent == AgentKind.ANTIGRAVITY
+    assert req_slash.workspace_alias == "karna"
+    assert "run build" in req_slash.task_text
+
+
+@pytest.mark.asyncio
+async def test_tool_router_agent_delegation_action_mode():
+    """Verify tool_router.route_and_execute returns ResponseMode.ACTION for agent delegation."""
+    from app.services.tool_router import tool_router
+
+    user_msg = (
+        "Antigravity 2.0, here’s what I need you to do: run frontend in karna"
+    )
+    res = await tool_router.route_and_execute(user_msg, sender_id="12345")
+    assert res.mode == ResponseMode.ACTION
+    assert res.action_card is not None
+    assert "Agent Task Dispatch" in res.action_card
+    assert res.action_keyboard is not None

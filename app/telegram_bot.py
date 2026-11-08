@@ -216,7 +216,7 @@ def build_application() -> Application:
         "feeds", "subscriptions", "watches", "monitors", "diff", "versions",
         "memory", "memories", "pin", "unpin", "forget", "forget_all",
         "export", "privacy", "link", "memory_debug",
-        "agent", "jobs", "job", "stop", "panic", "workspaces", "resume",
+        "agent", "jobs", "job", "stop", "panic", "workspaces", "resume", "frontend",
     ):
         application.add_handler(CommandHandler(cmd, _start_command))
 
