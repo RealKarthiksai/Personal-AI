@@ -28,24 +28,29 @@ def _get_router_types():
 
 # Regex patterns for deterministic agent invocation
 SLASH_AGENT_REGEX = re.compile(
-    r"^/agent\s+(?P<agent>cline|agy|antigravity)(?:\s+(?P<workspace>[a-zA-Z0-9_\-]+))?\s+(?P<task>.+)$",
+    r"^/agent\s+(?P<agent>cline|clline|clien|agy|antigravity|antigravty)(?:\s+(?P<workspace>[a-zA-Z0-9_\-]+))?\s+(?P<task>.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 
 NATURAL_AGENT_PATTERNS = [
-    # "ask cline to run tests in karna", "ask agy to refactor"
+    # "ask/tell/have/get cline to run tests in karna", "ask agy to refactor"
     re.compile(
-        r"^(?:(?:can|could)\s+you\s+|please\s+)?ask\s+(?P<agent>cline|agy|antigravity)\s+(?:to\s+|for\s+)?(?:(?:in|on|for)\s+(?P<workspace>[a-zA-Z0-9_\-]+)\s+)?(?P<task>.+)$",
+        r"^(?:(?:can|could)\s+you\s+|please\s+)?(?:ask|tell|have|get|instruct)\s+(?P<agent>cline|clline|clien|agy|antigravity|antigravty)\s+(?:to\s+|for\s+)?(?:(?:in|on|for)\s+(?P<workspace>[a-zA-Z0-9_\-]+)\s+)?(?P<task>.+)$",
         re.IGNORECASE | re.DOTALL,
     ),
-    # "use antigravity to update the scheduler in karna"
+    # "use/run antigravity to update the scheduler in karna"
     re.compile(
-        r"^(?:(?:can|could)\s+you\s+|please\s+)?use\s+(?P<agent>cline|agy|antigravity)\s+(?:to\s+|for\s+)?(?:(?:in|on|for)\s+(?P<workspace>[a-zA-Z0-9_\-]+)\s+)?(?P<task>.+)$",
+        r"^(?:(?:can|could)\s+you\s+|please\s+)?(?:use|run(?:\s+with)?)\s+(?P<agent>cline|clline|clien|agy|antigravity|antigravty)\s+(?:to\s+|for\s+)?(?:(?:in|on|for)\s+(?P<workspace>[a-zA-Z0-9_\-]+)\s+)?(?P<task>.+)$",
         re.IGNORECASE | re.DOTALL,
     ),
     # "with cline: run tests"
     re.compile(
-        r"^with\s+(?P<agent>cline|agy|antigravity)\s*:\s*(?P<task>.+)$",
+        r"^with\s+(?P<agent>cline|clline|clien|agy|antigravity|antigravty)\s*:\s*(?P<task>.+)$",
+        re.IGNORECASE | re.DOTALL,
+    ),
+    # "send messages/tasks to antigravity and/or cline ... <task>"
+    re.compile(
+        r"^(?:.*?\b(?:send(?:\s+messages?|\s+tasks?)?\s+to|(?:delegate\s+to))\s+)(?P<agent>cline|clline|clien|agy|antigravity|antigravty)(?:(?:\s+and\s+|\s*,\s*|\s+or\s+)(?:cline|clline|clien|agy|antigravity|antigravty))*\s+(?:(?:to|that|and)\s+|i\s+want\s+(?:you\s+to\s+)?|please\s+|:\s*)*(?P<task>.+)$",
         re.IGNORECASE | re.DOTALL,
     ),
 ]
@@ -59,9 +64,9 @@ EDIT_INTENT_KEYWORDS = re.compile(
 def parse_agent_kind(agent_str: str) -> Optional[AgentKind]:
     """Map string representation to AgentKind enum."""
     norm = agent_str.strip().lower()
-    if norm in ("cline",):
+    if norm in ("cline", "clline", "clien"):
         return AgentKind.CLINE
-    elif norm in ("agy", "antigravity"):
+    elif norm in ("agy", "antigravity", "antigravty"):
         return AgentKind.ANTIGRAVITY
     return None
 

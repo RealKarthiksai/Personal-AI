@@ -95,6 +95,15 @@ def test_deterministic_natural_language_parsing():
     assert req3.agent == AgentKind.CLINE
     assert "check types" in req3.task_text
 
+    # "but u can send messages to antigravity and clline i want you to give me or return my coding foldder structure for mee"
+    req4 = parse_deterministic_request(
+        "but u can send messages to antigravity and clline i want you to give me or return my coding foldder structure for mee"
+    )
+    assert req4 is not None
+    assert req4.agent in (AgentKind.ANTIGRAVITY, AgentKind.CLINE)
+    assert "give me or return my coding foldder structure for mee" in req4.task_text
+    assert req4.mode == JobMode.READ_ONLY
+
 
 def test_dispatch_agent_request_zero_llm():
     """Assert dispatching an agent task produces ResponseMode.ACTION with 0 LLM calls."""

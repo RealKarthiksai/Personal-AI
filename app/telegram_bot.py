@@ -212,7 +212,7 @@ def build_application() -> Application:
 
     # Command handlers.
     for cmd in (
-        "start", "id", "reset", "status", "search", "read", "briefing", "digest",
+        "start", "help", "id", "reset", "status", "search", "read", "briefing", "digest",
         "feeds", "subscriptions", "watches", "monitors", "diff", "versions",
         "memory", "memories", "pin", "unpin", "forget", "forget_all",
         "export", "privacy", "link", "memory_debug",

@@ -115,6 +115,10 @@ OPS_WATCHES_PATTERNS = [
 OPS_DIFF_PATTERNS = [
     r"\b(?:compare\s+(?:them\s+with\s+)?previously\s+indexed\s+repositories|compare\s+indexed\s+repos|show\s+record\s+versions|show\s+diff)\b",
 ]
+OPS_HELP_PATTERNS = [
+    r"^(?:/help|help)$",
+    r"\b(?:what\s+can\s+you\s+do|what\s+operations\s+can\s+you\s+perform|what\s+are\s+your\s+capabilities|all\s+the\s+operations\s+(?:u|you)\s+can\s+perform|what\s+(?:system\s+)?operations\s+(?:can|do)\s+you\s+(?:support|have|perform))\b",
+]
 
 
 class ResponseMode(str, Enum):
@@ -254,6 +258,47 @@ def get_system_status() -> str:
     )
 
 
+def get_system_capabilities_help() -> str:
+    """Deterministic help card detailing all system operations Karna can perform."""
+    try:
+        from app.agents.policy import load_workspaces
+        workspaces = load_workspaces()
+        ws_items = [f"<code>{w.alias}</code> (<code>{w.path}</code>)" for w in workspaces.values()]
+        ws_str = ", ".join(ws_items) if ws_items else "<code>karna</code> (/home/vhanghar/Karna)"
+    except Exception:
+        ws_str = "<code>karna</code> (/home/vhanghar/Karna)"
+
+    return (
+        "🛡️ <b>Karna System Capabilities & Operations</b>\n\n"
+        "I am your local AI companion and personal operations assistant. Here are all the operations I can perform on your machine:\n\n"
+        "🤖 <b>1. Local Agent Task Delegation (Cline & Antigravity)</b>\n"
+        "• Delegate coding, terminal commands, refactoring, and directory analysis to local agent CLIs:\n"
+        "  - <b>Cline CLI:</b> Headless autonomous coding & ops agent\n"
+        "  - <b>Antigravity CLI:</b> Google's agent CLI with multimodal & reasoning capabilities\n"
+        f"• <b>Approved Workspaces:</b> {ws_str}\n"
+        "• <b>Agent Commands:</b>\n"
+        "  - <code>/agent &lt;cline|agy&gt; [workspace] &lt;task&gt;</code> — Dispatch an agent task\n"
+        "  - <code>/workspaces</code> — List configured workspaces and policies\n"
+        "  - <code>/jobs</code> — List active and historical agent jobs\n"
+        "  - <code>/job &lt;id&gt;</code> — View job logs, output summary, and git diff\n"
+        "  - <code>/stop</code> — Terminate the active running agent process group\n"
+        "  - <code>/panic</code> — Emergency kill switch to abort all agent executions\n"
+        "  - <i>Natural phrases:</i> e.g. <code>ask cline to inspect folder structure in karna</code>\n\n"
+        "🔍 <b>2. Web Search & Deep Extraction</b>\n"
+        "• <code>/search &lt;query&gt;</code> — Real-time web research via local SearXNG\n"
+        "• <code>/read &lt;url&gt;</code> — Deep JavaScript webpage reader & crawler (Crawl4AI)\n"
+        "• <code>/briefing</code> — Daily intelligence briefing compiled from your sources\n\n"
+        "📡 <b>3. Subscriptions & Health Monitoring</b>\n"
+        "• <code>/status</code> — System status, API quotas, and health check\n"
+        "• <code>/feeds</code> — List and monitor active RSS feeds\n"
+        "• <code>/watches</code> — Monitor web pages for changes and content diffs\n\n"
+        "🧠 <b>4. Long-Term Memory & Profile</b>\n"
+        "• <code>/memory</code> — View long-term facts, preferences, and profile\n"
+        "• <code>/pin &lt;id&gt;</code> & <code>/forget &lt;id&gt;</code> — Manage stored memories\n"
+        "• <code>/export</code> & <code>/privacy</code> — Memory data export and privacy policy"
+    )
+
+
 class ToolRouter:
     """Routes messages to search/extraction tools or passes through directly."""
 
@@ -377,6 +422,14 @@ class ToolRouter:
         slash = self.detect_slash_command(clean_text)
         if slash:
             cmd, args = slash
+            if cmd in ("help", "start"):
+                return ToolExecutionResult(
+                    tool_name="help",
+                    mode=ResponseMode.DIRECT,
+                    direct=get_system_capabilities_help(),
+                    status_message="Loading capabilities...",
+                )
+
             if cmd == "status":
                 status_card = get_system_status()
                 return ToolExecutionResult(
@@ -549,6 +602,7 @@ class ToolRouter:
                 unknown_msg = (
                     f"Unknown command <code>/{cmd}</code>.\n\n"
                     f"<b>Available commands:</b>\n"
+                    f"• <code>/help</code> - System capabilities & command guide\n"
                     f"• <code>/status</code> - System status & ingestion sources\n"
                     f"• <code>/feeds</code> - Active RSS feed subscriptions\n"
                     f"• <code>/watches</code> - Monitored web pages & change alerts\n"
@@ -580,6 +634,22 @@ class ToolRouter:
         agent_req = parse_deterministic_request(clean_text)
         if agent_req is not None:
             return dispatch_agent_request(agent_req, sender_id=sender_id or "default")
+
+        # Ambiguous agent fallback if agent keywords are present
+        if re.search(r"\b(?:cline|clline|clien|agy|antigravity|antigravty)\b", clean_text, re.IGNORECASE):
+            try:
+                from app.agents.router import resolve_ambiguous_routing_with_llm
+                resolved = await resolve_ambiguous_routing_with_llm(clean_text)
+                if resolved:
+                    agent, ws = resolved
+                    fallback_req = DispatchRequest(
+                        agent=agent,
+                        workspace_alias=ws,
+                        task_text=clean_text,
+                    )
+                    return dispatch_agent_request(fallback_req, sender_id=sender_id or "default")
+            except Exception as e:
+                logger.warning("Ambiguous agent routing fallback failed: %s", e)
 
         # ----------------------------------------------------------------------
         # 2. System-Directed Operational Queries (0 LLM Calls)
@@ -633,6 +703,14 @@ class ToolRouter:
                 mode=ResponseMode.DIRECT,
                 direct="No recent repository version changes found in local records.",
                 status_message="Checking repository versions...",
+            )
+
+        if any(re.search(p, clean_text, re.IGNORECASE) for p in OPS_HELP_PATTERNS):
+            return ToolExecutionResult(
+                tool_name="help",
+                mode=ResponseMode.DIRECT,
+                direct=get_system_capabilities_help(),
+                status_message="Loading capabilities...",
             )
 
         # ----------------------------------------------------------------------
