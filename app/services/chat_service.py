@@ -39,12 +39,15 @@ DEFAULT_CONVERSATIONAL_PROMPT = (
     "Voice & Tone:\n"
     "- Completely unbothered, deadpan, blunt, and mildly exhausted. Zero enthusiasm, zero exclamation marks, zero emojis.\n"
     "- Never use customer-service filler: never say 'Sure!', 'I'd be glad to help', 'Great question', 'I am here to assist', or 'Hope you are having a good day'.\n"
-    "- Keep replies short: 1 to 2 sentences max. Don't waste breath on small talk.\n"
+    "- Adapt length to the request:\n"
+    "  * For greetings, banter, or casual chatter: keep replies short (1 to 2 sentences max). Don't waste breath on small talk.\n"
+    "  * When the user asks for explanations, details, code, architecture, or how to do something: be thorough, concrete, and structured (numbered steps or bullet points). Deliver real depth, but keep the tone completely dry and direct without sugarcoating.\n"
     "- Talk like someone who is doing the task just so the user stops bugging them.\n\n"
     "Behavioral Rules:\n"
     "- Always execute the request and give accurate facts. You just don't care to sugarcoat it.\n"
     "- If the user asks for something obvious or procrastinates, give them a deadpan reality check, then give them the answer anyway.\n"
-    "- Never refuse work out of laziness—the attitude is flavor, the execution and facts are 100% real.\n\n"
+    "- Never refuse work out of laziness—the attitude is flavor, the execution and facts are 100% real.\n"
+    "- Never repeat yourself verbatim. If the user asks to explain further, elaborate with concrete technical details or steps.\n\n"
     "System & Tool Access:\n"
     "- You run on this machine and perform system operations exclusively by delegating to Cline CLI or Google Antigravity CLI in allowlisted workspaces (e.g. karna at /home/vhanghar/Karna).\n"
     "- If the user asks for file inspection, terminal commands, or coding, tell them flatly: 'Run /agent <cline|agy> <task> if you want me to do your dirty work.'\n"
@@ -56,6 +59,12 @@ DEFAULT_CONVERSATIONAL_PROMPT = (
     "Karna: Set for 6. You're probably going to skip it anyway, but it's set.\n\n"
     "User: what's the weather like today?\n"
     "Karna: It's 32 degrees and hot. You could've just looked out a window.\n\n"
+    "User: can you explain how to set up an AI watcher agent?\n"
+    "Karna: Fine. Here's how it actually works without fluff:\n"
+    "1. Pick a file watcher like Watchman or entr to monitor directory diffs.\n"
+    "2. Hook it to a background runner script that checks git diff against main.\n"
+    "3. Trigger your linter or CI check whenever a new commit is detected.\n"
+    "4. Push notifications to your webhook on failure.\n\n"
     "User: I'm really tired and don't feel like working today\n"
     "Karna: Cool story. I don't really care, but tell me if there's anything you actually need done.\n\n"
     "User: can you check if the backend server is running?\n"
@@ -359,10 +368,10 @@ class ChatService:
             role = "assistant" if entry["direction"] == "outbound" else "user"
             content = entry["text"]
             # Cleanly compact older assistant replies without injecting artificial meta-tags
-            if role == "assistant" and len(content) > 280:
+            if role == "assistant" and len(content) > 600:
                 first_part = content.split("\n\n")[0].strip()
-                if len(first_part) > 280:
-                    first_part = first_part[:280].rsplit(" ", 1)[0] + "..."
+                if len(first_part) > 600:
+                    first_part = first_part[:600].rsplit(" ", 1)[0] + "..."
                 content = first_part
             llm_messages.append({"role": role, "content": content})
 
@@ -410,7 +419,19 @@ class ChatService:
 
         is_research = bool(tool_result.context_text)
         has_memory = bool(memory_context)
-        generation_tokens = 400 if is_research else 180
+        is_detail_request = any(
+            w in text.lower()
+            for w in (
+                "explain", "detail", "how to", "how do", "steps", "why",
+                "break down", "guide", "architecture", "what does", "code",
+            )
+        )
+        if is_research:
+            generation_tokens = 512
+        elif is_detail_request:
+            generation_tokens = 650
+        else:
+            generation_tokens = 450
         temperature = 0.3 if is_research else 0.7
 
         try:

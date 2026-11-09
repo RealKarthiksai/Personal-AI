@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     database_url: str = Field(default="sqlite:///./data/chatbot.db")
 
     # --- Runtime --------------------------------------------------------------
-    max_history_messages: int = Field(default=6)
+    max_history_messages: int = Field(default=10)
     request_timeout_seconds: int = Field(default=120)
     session_timeout_minutes: int = Field(default=30)
 

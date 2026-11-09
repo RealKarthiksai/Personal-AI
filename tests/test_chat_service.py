@@ -178,8 +178,8 @@ def test_history_compaction_and_token_budget(monkeypatch, tmp_path) -> None:
         assert len(assistant_msgs[0]["content"]) < len(massive_text)
         assert "Prior Table" in assistant_msgs[0]["content"]
 
-        # Verify max_tokens for casual conversation is 180
-        assert captured_max_tokens[0] == 180
+        # Verify max_tokens for casual conversation is 450 (expanded from 180)
+        assert captured_max_tokens[0] == 450
 
         # Now test that within active session, context is preserved even if user says a casual greeting
         captured_messages.clear()

@@ -12,7 +12,8 @@ The chat service (LLM + SQLite) is invoked through the injected ChatService.
 
 from __future__ import annotations
 
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, Sequence
 
 from app.services.chat_service import ChatService
 from app.utils.logging import get_logger
@@ -32,6 +33,7 @@ class TelegramUpdate:
         text: Optional[str],
         is_command: bool,
         command: Optional[str],
+        timestamp: Optional[datetime] = None,
     ) -> None:
         self.update_id = update_id
         self.chat_id = chat_id
@@ -40,6 +42,7 @@ class TelegramUpdate:
         self.text = text
         self.is_command = is_command
         self.command = command
+        self.timestamp = timestamp or datetime.now(timezone.utc)
 
 
 def parse_update(raw: dict) -> Optional[TelegramUpdate]:
@@ -67,6 +70,14 @@ def parse_update(raw: dict) -> Optional[TelegramUpdate]:
     if user_id is None:
         return None
 
+    raw_date = message.get("date")
+    if isinstance(raw_date, (int, float)):
+        msg_timestamp = datetime.fromtimestamp(raw_date, tz=timezone.utc)
+    elif isinstance(raw_date, datetime):
+        msg_timestamp = raw_date
+    else:
+        msg_timestamp = datetime.now(timezone.utc)
+
     text = message.get("text")
     if text is None:
         # Ignore non-text messages (media, stickers, etc.) gracefully.
@@ -88,6 +99,7 @@ def parse_update(raw: dict) -> Optional[TelegramUpdate]:
         text=text,
         is_command=is_command,
         command=command,
+        timestamp=msg_timestamp,
     )
 
 
@@ -177,7 +189,11 @@ async def handle_command(
             sender_id=update.chat_id,
             direction="inbound",
             text="/reset",
-            timestamp=update.timestamp.isoformat() if hasattr(update.timestamp, "isoformat") else str(update.timestamp),
+            timestamp=(
+                update.timestamp.isoformat()
+                if getattr(update, "timestamp", None) and hasattr(update.timestamp, "isoformat")
+                else datetime.now(timezone.utc).isoformat()
+            ),
             status="received",
             user_id=1,
             channel="telegram",
@@ -270,7 +286,11 @@ async def handle_text_message(
                     sender_id=u.chat_id,
                     direction="inbound",
                     text=u.text,
-                    timestamp=u.timestamp.isoformat() if hasattr(u.timestamp, "isoformat") else str(u.timestamp),
+                    timestamp=(
+                        u.timestamp.isoformat()
+                        if getattr(u, "timestamp", None) and hasattr(u.timestamp, "isoformat")
+                        else datetime.now(timezone.utc).isoformat()
+                    ),
                     status="received",
                     user_id=1,
                     channel="telegram",

@@ -62,13 +62,47 @@ class PlannerService:
         casual_pattern = re.compile(
             r"^(?:hi|hello|hey|hola|greetings|good\s+(?:morning|afternoon|evening)|howdy|sup|"
             r"how\s+are\s+you|how\s+are\s+u|what\'?s\s+up|who\s+are\s+you|what\s+is\s+your\s+name|"
-            r"what\s+can\s+you\s+do|help|thanks|thank\s+you|ok|okay|bye|goodbye)[\s\.\?!]*$",
+            r"what\s+can\s+you\s+do|help|thanks|thank\s+you|ok|okay|bye|goodbye)"
+            r"(?:\s*[,!.]?\s*(?:how\s+are\s+you(?:\s+today)?|what\'?s\s+up|sup))?[\s\.\?!]*$",
             re.IGNORECASE,
         )
         if casual_pattern.match(effective_text):
             return SearchPlan(
                 requires_search=False,
                 task_summary="Conversational response",
+                search_queries=[],
+                required_details=[],
+            )
+
+        # Fast path: Follow-up explanation, elaboration, or detail requests (bypasses LLM in 0ms)
+        followup_pattern = re.compile(
+            r"^(?:(?:oh+|hey|ok|okay|so|wait|and|now)\s+)?(?:"
+            r"(?:can\s+you\s+|could\s+you\s+|please\s+)?(?:explain|detail|elaborate|clarify)(?:\s+it|\s+this|\s+that)?(?:\s+in\s+detail)?|"
+            r"not\s+in\s+a\s+line(?:\s+in\s+detail)?|in\s+detail|explain\s+further|tell\s+me\s+more|"
+            r"why(?:\s+is\s+that|\s+so)?|how\s+so|what\s+do\s+you\s+mean|give\s+me\s+an\s+example|"
+            r"break\s+it\s+down|continue|more\s+info)[\s\.\?!]*$",
+            re.IGNORECASE,
+        )
+        if followup_pattern.match(effective_text):
+            return SearchPlan(
+                requires_search=False,
+                task_summary="Conversational explanation follow-up",
+                search_queries=[],
+                required_details=[],
+            )
+
+        # Fast path: Casual banter, reactions, sarcasm (bypasses LLM in 0ms)
+        banter_pattern = re.compile(
+            r"^(?:soo?\s+lame|lame|joke|is\s+that\s+supposed\s+to\s+be\s+a\s+joke|"
+            r"do\s+you\s+know\s+how\s+random\s+u\s+are|random|"
+            r"lol|lmao|haha+|wow|nah|nope|yeah|yep|cool(?:\s+story)?|whatever|"
+            r"tf|omg|nevermind|forget\s+it|drop\s+it|start\s+over)[\s\.\?!]*$",
+            re.IGNORECASE,
+        )
+        if banter_pattern.match(effective_text):
+            return SearchPlan(
+                requires_search=False,
+                task_summary="Conversational banter",
                 search_queries=[],
                 required_details=[],
             )

@@ -102,12 +102,16 @@ class LLMClient:
         system_prompt: Optional[str] = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
+        presence_penalty: Optional[float] = 0.4,
+        frequency_penalty: Optional[float] = 0.4,
+        top_p: Optional[float] = 0.9,
         response_format: Optional[dict] = None,
         priority: str = "interactive",
     ) -> str:
         """Generate a completion using the local LLM.
 
         `priority` can be 'interactive' (preempts background) or 'background'.
+        `presence_penalty` and `frequency_penalty` break repetitive token loops in small models.
         """
         if not self.base_url:
             raise LLMUnavailableError("LLM_BASE_URL is not configured")
@@ -126,6 +130,12 @@ class LLMClient:
             "temperature": temperature,
             "stream": False,
         }
+        if presence_penalty is not None:
+            payload["presence_penalty"] = presence_penalty
+        if frequency_penalty is not None:
+            payload["frequency_penalty"] = frequency_penalty
+        if top_p is not None:
+            payload["top_p"] = top_p
         if response_format:
             payload["response_format"] = response_format
 

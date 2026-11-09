@@ -157,6 +157,22 @@ async def _text_message(
     await _dispatch(update, context)
 
 
+async def _media_message(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle non-text messages (photos, voice notes, stickers, documents) with direct feedback."""
+    if not update or not update.effective_chat or not update.effective_user:
+        return
+    from app.security.authorization import is_telegram_user_authorized
+    if not is_telegram_user_authorized(update.effective_user.id):
+        return
+    sender = _SenderAdapter(_build_client())
+    await sender.send_text(
+        to=str(update.effective_chat.id),
+        text="I can only read text for now. Type it out.",
+    )
+
+
 async def _dispatch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if _service is None or _application is None:
         return
@@ -245,6 +261,9 @@ def build_application() -> Application:
 
     # Text message handler (non-command).
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _text_message))
+
+    # Fallback handler for media, voice, documents, stickers
+    application.add_handler(MessageHandler(~filters.TEXT & ~filters.COMMAND, _media_message))
 
     return application
 
