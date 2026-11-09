@@ -6,9 +6,13 @@ Common Ingestion Pipeline, and logs audit metrics into SQLite `ingestion_runs`.
 
 from __future__ import annotations
 
+import os
+import shutil
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from app.config import config
+from app.database.database import transaction
 from app.ingestion.storage import log_ingestion_run
 from app.integrations.github.service import github_service
 from app.integrations.openalex.service import openalex_service
@@ -332,10 +336,14 @@ async def job_memory_idle() -> Dict[str, Any]:
                     )
 
         log_memory_job(
-            job_name="idle_consolidation",
+            job="idle_consolidation",
+            user_id=None,
             status="success",
-            items_promoted=extracted_facts_count,
-            details=f"Processed {len(unprocessed_msgs)} messages",
+            stats={
+                "items_promoted": extracted_facts_count,
+                "details": f"Processed {len(unprocessed_msgs)} messages",
+            },
+            started_at=now_str,
         )
         return {
             "processed_messages": len(unprocessed_msgs),
@@ -344,9 +352,11 @@ async def job_memory_idle() -> Dict[str, Any]:
     except Exception as exc:
         logger.error("Idle memory processing job failed: %s", exc)
         log_memory_job(
-            job_name="idle_consolidation",
+            job="idle_consolidation",
+            user_id=None,
             status="failed",
-            error_message=str(exc),
+            stats={"error": str(exc)},
+            started_at=now_str,
         )
         return {"error": str(exc)}
 
@@ -355,6 +365,7 @@ async def job_agents_reaper() -> Dict[str, Any]:
     """Periodic maintenance: clean up expired confirmations and old job logs."""
     from datetime import datetime, timedelta, timezone
     import shutil
+    from app.config import config
 
     now = datetime.now(timezone.utc)
     expired_threshold = (now - timedelta(seconds=config.agent_confirm_ttl_s)).strftime("%Y-%m-%dT%H:%M:%SZ")

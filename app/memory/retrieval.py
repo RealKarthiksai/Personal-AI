@@ -20,6 +20,35 @@ from app.utils.logging import get_logger
 logger = get_logger("app.memory.retrieval")
 
 
+CONVERSATIONAL_STOPWORDS: Set[str] = {
+    # Pronouns & determiners
+    "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours",
+    "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers",
+    "herself", "it", "its", "itself", "they", "them", "their", "theirs", "themselves",
+    "what", "which", "who", "whom", "this", "that", "these", "those", "the", "a", "an",
+    # Verbs & auxiliaries
+    "am", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "having", "do", "does", "did", "doing", "would", "should", "could", "ought",
+    "can", "will", "shall",
+    # Prepositions & conjunctions
+    "and", "but", "if", "or", "because", "as", "until", "while", "of", "at", "by",
+    "for", "with", "about", "against", "between", "into", "through", "during", "before",
+    "after", "above", "below", "to", "from", "up", "down", "in", "out", "on", "off",
+    "over", "under", "again", "further", "then", "once", "here", "there", "when",
+    "where", "why", "how", "all", "any", "both", "each", "few", "more", "most",
+    "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than",
+    "too", "very", "s", "t", "just", "don", "now", "u", "ur", "ok", "okay",
+    # Specific conversational stopwords required
+    "know", "random", "lame", "joke", "mean", "supposed", "tf", "omg", "soo", "like", "yeah", "note", "notes",
+}
+
+
+def extract_content_terms(text: str) -> List[str]:
+    """Extract non-stopword content words from text for FTS search."""
+    tokens = re.findall(r"\b[A-Za-z0-9_]+\b", text.lower())
+    return [t for t in tokens if t not in CONVERSATIONAL_STOPWORDS and len(t) > 1]
+
+
 def estimate_tokens(text: str) -> int:
     """Fast local estimate of token count (chars / 4)."""
     return max(1, len(text) // 4)
@@ -63,8 +92,12 @@ def build_memory_context(
     priority_items = core_items + pinned_items
 
     # 3. Relevant search-based memories via FTS5
-    clean_query = normalize_query(query).normalized if query else ""
-    fts_results = search_memories_fts(user_id=user_id, query_text=clean_query, limit=10) if clean_query else []
+    # Strict stopword gating: if no content terms remain after stopword removal, skip FTS completely
+    content_terms = extract_content_terms(query) if query else []
+    fts_results: List[MemoryItem] = []
+    if content_terms:
+        clean_query = " ".join(content_terms)
+        fts_results = search_memories_fts(user_id=user_id, query_text=clean_query, limit=10)
 
     # Exclude already included priority items from FTS results
     seen_ids: Set[int] = {m.id for m in priority_items if m.id is not None}
@@ -75,10 +108,22 @@ def build_memory_context(
             if m.id is not None:
                 seen_ids.add(m.id)
 
-    # 4. Recent daily digest if query has temporal/vague intent or budget permits
-    is_vague = any(kw in query.lower() for kw in ("yesterday", "recent", "remind me", "what did i", "my notes", "remember"))
+    # 4. Recent daily digest: strictly gated by explicit recall intent AND only when FTS finds nothing
+    is_explicit_recall = any(
+        kw in query.lower()
+        for kw in (
+            "remind me",
+            "what did i",
+            "my notes",
+            "what were my",
+            "did i note",
+            "recall",
+            "look up my notes",
+            "check my notes",
+        )
+    )
     recent_items: List[MemoryItem] = []
-    if is_vague or len(search_items) < 3:
+    if is_explicit_recall and not search_items:
         daily_items = list_memories(user_id=user_id, tier=MemoryTier.DAILY, limit=6)
         for m in daily_items:
             if m.id not in seen_ids:

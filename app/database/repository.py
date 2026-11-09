@@ -6,6 +6,7 @@ webhook delivery is guarded by a unique constraint on external_message_id.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 from typing import Iterable, List, Optional, Set
 
@@ -172,17 +173,29 @@ def get_active_session_history(
         reference_time = reference_time.replace(tzinfo=timezone.utc)
 
     with transaction() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, external_message_id, direction, text, timestamp, created_at
-            FROM messages
-            WHERE sender_id = ?
-              AND id > COALESCE((SELECT reset_after_message_id FROM session_resets WHERE sender_id = ?), 0)
-            ORDER BY created_at DESC, id DESC
-            LIMIT ?
-            """,
-            (sender_id, sender_id, max(limit + 20, 50)),
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """
+                SELECT id, external_message_id, direction, text, timestamp, created_at
+                FROM messages
+                WHERE sender_id = ?
+                  AND id > COALESCE((SELECT reset_after_message_id FROM session_resets WHERE sender_id = ?), 0)
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (sender_id, sender_id, max(limit + 20, 50)),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            rows = conn.execute(
+                """
+                SELECT id, external_message_id, direction, text, timestamp, created_at
+                FROM messages
+                WHERE sender_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (sender_id, max(limit + 20, 50)),
+            ).fetchall()
 
     excluded: Set[str] = set()
     if exclude_external_id:

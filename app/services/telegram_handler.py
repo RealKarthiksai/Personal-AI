@@ -170,13 +170,35 @@ async def handle_command(
     if command == "/reset":
         from app.database import repository
 
-        with repository.transaction() as conn:
-            conn.execute(
-                "DELETE FROM messages WHERE sender_id = ?",
-                (update.chat_id,),
-            )
+        external_message_id = f"tg:{update.update_id}"
+        repository.get_or_create_sender(update.chat_id)
+        repository.create_message(
+            external_message_id=external_message_id,
+            sender_id=update.chat_id,
+            direction="inbound",
+            text="/reset",
+            timestamp=update.timestamp.isoformat() if hasattr(update.timestamp, "isoformat") else str(update.timestamp),
+            status="received",
+            user_id=1,
+            channel="telegram",
+        )
         reply = "Your conversation history has been reset."
-        await sender.send_text(to=update.chat_id, text=reply)
+        repository.create_message(
+            external_message_id=None,
+            sender_id=update.chat_id,
+            direction="outbound",
+            text=reply,
+            timestamp=None,
+            status="pending",
+            user_id=1,
+            channel="telegram",
+        )
+        repository.record_session_reset(update.chat_id)
+        message_id = await sender.send_text(to=update.chat_id, text=reply)
+        if message_id:
+            repository.mark_processing(external_message_id, "delivered")
+        else:
+            repository.mark_processing(external_message_id, "send_failed")
         return {
             "command": command,
             "handled": True,
@@ -227,9 +249,54 @@ async def handle_text_message(
     service: ChatService,
     sender,
     request_id: str,
+    burst: Optional[Sequence[TelegramUpdate]] = None,
 ) -> dict:
-    """Handle an ordinary text message through the full chat pipeline."""
-    # External message id = f"tg:{update_id}" to avoid collisions across channels.
+    """Handle an ordinary text message or aggregated burst through the full chat pipeline."""
+    from app.database import repository
+
+    if burst and len(burst) > 1:
+        merged_text = "\n".join(u.text for u in burst if u.text)
+        burst_external_ids = [f"tg:{u.update_id}" for u in burst]
+        primary_update = burst[-1]
+        external_message_id = f"tg:{primary_update.update_id}"
+
+        # Persist prior updates in the burst so they are not lost
+        for u in burst[:-1]:
+            u_ext_id = f"tg:{u.update_id}"
+            if not repository.message_exists(u_ext_id):
+                repository.get_or_create_sender(u.chat_id)
+                repository.create_message(
+                    external_message_id=u_ext_id,
+                    sender_id=u.chat_id,
+                    direction="inbound",
+                    text=u.text,
+                    timestamp=u.timestamp.isoformat() if hasattr(u.timestamp, "isoformat") else str(u.timestamp),
+                    status="received",
+                    user_id=1,
+                    channel="telegram",
+                )
+
+        result = await service.process_inbound(
+            sender_id=primary_update.chat_id,
+            external_message_id=external_message_id,
+            text=merged_text,
+            request_id=request_id,
+            sender=sender,
+            exclude_external_ids=burst_external_ids,
+        )
+
+        # Mark all prior burst messages as delivered along with primary
+        for u in burst[:-1]:
+            repository.mark_processing(f"tg:{u.update_id}", "delivered")
+
+        return {
+            "type": "text",
+            "update_id": primary_update.update_id,
+            "burst_update_ids": [u.update_id for u in burst],
+            "result": result,
+        }
+
+    # Single message path
     external_message_id = f"tg:{update.update_id}"
     result = await service.process_inbound(
         sender_id=update.chat_id,
@@ -237,6 +304,7 @@ async def handle_text_message(
         text=update.text,
         request_id=request_id,
         sender=sender,
+        exclude_external_ids=[external_message_id],
     )
     return {
         "type": "text",

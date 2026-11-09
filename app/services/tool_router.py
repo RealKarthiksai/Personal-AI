@@ -77,6 +77,12 @@ TRAILING_PUNCT_REGEX = re.compile(r"[.,;:!?)]+$")
 # Slash command regex: /cmd or /cmd@bot [args]
 SLASH_COMMAND_REGEX = re.compile(r"^/(?P<cmd>[A-Za-z_]+)(?:@\w+)?(?:\s+(?P<args>.+))?$", re.DOTALL)
 
+# Narrow whole-message match for conversational or deterministic reset
+RESET_PHRASE_REGEX = re.compile(
+    r"^(?:reset|start over|forget it|never mind|nevermind|drop it)[.!?]?$",
+    re.IGNORECASE,
+)
+
 # Patterns that indicate search or real-time intent
 SEARCH_PATTERNS = [
     r"^(?:can\s+you\s+|could\s+you\s+|please\s+|help\s+me\s+)?(?:find|search|look\s*up|google|check|get|tell\s+me\s+about|show\s+me)\s+(?:for\s+|out\s+)?(.+)",
@@ -450,12 +456,29 @@ class ToolRouter:
             except Exception:
                 actual_user_id = 1
 
+        # Natural language reset check (0 LLM calls, deterministic)
+        if RESET_PHRASE_REGEX.match(clean_text):
+            return ToolExecutionResult(
+                tool_name="reset",
+                mode=ResponseMode.DIRECT,
+                direct="Fine, dropping it. What's the new plan?",
+                status_message=None,
+            )
+
         # ----------------------------------------------------------------------
         # 1. Slash Commands Dispatch (Exact, 0 LLM Calls)
         # ----------------------------------------------------------------------
         slash = self.detect_slash_command(clean_text)
         if slash:
             cmd, args = slash
+            if cmd == "reset":
+                return ToolExecutionResult(
+                    tool_name="reset",
+                    mode=ResponseMode.DIRECT,
+                    direct="Your conversation history has been reset.",
+                    status_message=None,
+                )
+
             if cmd in ("help", "start"):
                 return ToolExecutionResult(
                     tool_name="help",

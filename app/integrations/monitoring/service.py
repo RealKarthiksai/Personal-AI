@@ -15,7 +15,6 @@ import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from bs4 import BeautifulSoup
 
 from app.config import config
 from app.database.database import transaction
@@ -29,6 +28,97 @@ from app.services.telegram_client import TelegramClient
 from app.utils.logging import get_logger
 
 logger = get_logger("app.integrations.monitoring.service")
+
+
+def _format_iso_date(val: Optional[str]) -> Optional[str]:
+    """Format an ISO-8601 date string to human readable date."""
+    if not val:
+        return None
+    try:
+        dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+        return dt.strftime("%b %d, %Y")
+    except Exception:
+        return val[:10]
+
+
+def _format_date_range(start: Optional[str], end: Optional[str]) -> Optional[str]:
+    """Format start and end ISO dates into a readable range."""
+    s = _format_iso_date(start)
+    e = _format_iso_date(end)
+    if s and e:
+        if s == e:
+            return s
+        return f"{s} - {e}"
+    return s or e or "Dates TBA"
+
+
+def extract_hackathons_from_html(url: str, html_text: str) -> List[Hackathon]:
+    """Extract structured Hackathon objects from HTML content."""
+    if not html_text:
+        return []
+
+    hackathons: List[Hackathon] = []
+
+    # 1. Devfolio Next.js dehydrated state parsing
+    m = re.search(r'<script[^>]+id="__NEXT_DATA__"[^>]*>(.*?)</script>', html_text, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group(1))
+            props = data.get("props", {}).get("pageProps", {})
+            queries = props.get("dehydratedState", {}).get("queries", [])
+            for q in queries:
+                if q.get("queryKey") == "fetchAllHackathonTypes":
+                    st = q.get("state", {}).get("data", {})
+                    # Focus on open and upcoming hackathons
+                    raw_items = st.get("open_hackathons", []) + st.get("upcoming_hackathons", [])
+                    for item in raw_items:
+                        name = item.get("name")
+                        if not name:
+                            continue
+                        slug = item.get("slug")
+                        is_online = item.get("is_online", True)
+                        location = "Online / Virtual" if is_online else "In-Person (Offline)"
+
+                        themes_raw = item.get("themes") or []
+                        theme_names = []
+                        for t in themes_raw:
+                            if isinstance(t, dict):
+                                t_info = t.get("theme")
+                                if isinstance(t_info, dict) and t_info.get("name"):
+                                    theme_names.append(t_info["name"])
+                                elif t.get("name"):
+                                    theme_names.append(t["name"])
+                        details = ", ".join(theme_names) if theme_names else "Open Innovation"
+
+                        starts_at = item.get("starts_at")
+                        ends_at = item.get("ends_at")
+                        event_date_str = _format_date_range(starts_at, ends_at)
+
+                        settings = item.get("settings") or {}
+                        deadline_raw = settings.get("reg_ends_at")
+                        deadline_str = _format_iso_date(deadline_raw) if deadline_raw else None
+
+                        reg_url = settings.get("external_apply_url") or (f"https://{slug}.devfolio.co" if slug else url)
+                        prize_str = item.get("prize") or item.get("prizes") or "Check page for details"
+
+                        hackathons.append(
+                            Hackathon(
+                                name=name,
+                                organizer="Devfolio",
+                                deadline=deadline_str,
+                                event_date=event_date_str,
+                                location=location,
+                                eligibility=details,
+                                prize=str(prize_str) if prize_str else None,
+                                registration_url=reg_url,
+                                source_url=url,
+                                confidence="HIGH",
+                            )
+                        )
+        except Exception as exc:
+            logger.warning("Failed to extract hackathons from __NEXT_DATA__: %s", exc)
+
+    return hackathons
 
 
 class MonitoringService:
@@ -110,6 +200,43 @@ class MonitoringService:
     # Notification Helper
     # --------------------------------------------------------------------------
 
+    async def notify_hackathon(self, hackathon: Hackathon) -> None:
+        """Dispatch clean, formatted hackathon notification to Telegram."""
+        if not config.is_telegram_configured():
+            logger.info("Telegram not configured; skipping hackathon notification dispatch")
+            return
+
+        allowed_ids = config.allowed_telegram_user_ids
+        if not allowed_ids:
+            logger.info("No allowed Telegram user IDs configured; skipping hackathon notification dispatch")
+            return
+
+        name = html.escape(hackathon.name or "Unnamed Hackathon")
+        location = html.escape(hackathon.location or "Online / Virtual")
+        details = html.escape(hackathon.eligibility or hackathon.organizer or "Check event details")
+        prize = html.escape(hackathon.prize or "See website for details")
+        dates = html.escape(hackathon.event_date or "Dates TBA")
+        if hackathon.deadline:
+            dates += f" (Reg Deadline: {html.escape(hackathon.deadline)})"
+        link = hackathon.registration_url or hackathon.source_url
+
+        message = (
+            f"🚀 <b>New Hackathon Detected!</b>\n\n"
+            f"🏆 <b>Name:</b> {name}\n"
+            f"📍 <b>Place:</b> {location}\n"
+            f"📝 <b>Details:</b> {details}\n"
+            f"💰 <b>Amount:</b> {prize}\n"
+            f"🗓️ <b>Date & Time:</b> {dates}\n"
+            f"🔗 <b>Link:</b> {link}"
+        )
+
+        for user_id in allowed_ids:
+            try:
+                await self.telegram.send_text(chat_id=str(user_id), text=message)
+                logger.info("Sent hackathon notification for '%s' to Telegram user %d", hackathon.name, user_id)
+            except Exception as exc:
+                logger.error("Failed to send hackathon notification to user %d: %s", user_id, exc)
+
     async def notify_users_of_change(self, title: str, url: str, snippet: Optional[str] = None) -> None:
         """Dispatch Telegram alert to configured allowed users."""
         if not config.is_telegram_configured():
@@ -121,13 +248,15 @@ class MonitoringService:
             logger.info("No allowed Telegram user IDs configured; skipping change notification dispatch")
             return
 
+        clean_title = html.escape(title)
         message = (
             f"🔔 <b>Website Change Detected</b>\n\n"
-            f"<b>Source:</b> {title}\n"
+            f"<b>Source:</b> {clean_title}\n"
             f"<b>URL:</b> {url}\n"
         )
         if snippet:
-            clean_snippet = snippet[:400]
+            clean_snippet = re.sub(r"\s+", " ", snippet).strip()[:400]
+            clean_snippet = html.escape(clean_snippet)
             message += f"\n<b>Updated Content:</b>\n{clean_snippet}"
 
         for user_id in allowed_ids:
@@ -147,6 +276,16 @@ class MonitoringService:
         url = watch["url"]
         title = watch.get("title") or url
         now_iso = datetime.now(timezone.utc).isoformat()
+        is_hackathon_site = any(kw in url.lower() or kw in title.lower() for kw in ("hackathon", "devfolio", "bounty", "contest"))
+
+        raw_html = ""
+        if is_hackathon_site and hasattr(self.client, "fetch_page_raw"):
+            try:
+                raw_res = await self.client.fetch_page_raw(url)
+                if isinstance(raw_res, str):
+                    raw_html = raw_res
+            except Exception as exc:
+                logger.debug("Failed to fetch raw HTML for %s: %s", url, exc)
 
         try:
             content = await self.client.fetch_page_content(url)
@@ -170,7 +309,7 @@ class MonitoringService:
                 "watch_id": wid,
                 "url": url,
                 "title": title,
-                "full_length": len(content),
+                "full_length": len(content) if content else 0,
             },
         )
 
@@ -188,8 +327,37 @@ class MonitoringService:
                     (now_iso, wid),
                 )
 
-        if status == "updated":
-            # Significant content modification detected!
+        if is_hackathon_site:
+            html_source = raw_html or (content if isinstance(content, str) else "")
+            hackathons = extract_hackathons_from_html(url, html_source)
+            if hackathons:
+                with transaction() as conn:
+                    rows = conn.execute(
+                        "SELECT name FROM extracted_entities WHERE entity_type = 'hackathon'"
+                    ).fetchall()
+                    existing_names = {r["name"].strip().lower() for r in rows}
+
+                new_hackathons = [h for h in hackathons if h.name.strip().lower() not in existing_names]
+
+                # Save new hackathons into extracted_entities
+                for h in new_hackathons:
+                    save_extracted_entity(
+                        entity_type="hackathon",
+                        name=h.name,
+                        structured_data=h.model_dump_json(),
+                        source_url=h.registration_url or url,
+                        content_hash=hashlib.sha256(h.name.encode()).hexdigest()[:16],
+                    )
+
+                if status == "updated":
+                    if new_hackathons:
+                        logger.info("Detected %d new hackathons for watch: %s", len(new_hackathons), title)
+                        for h in new_hackathons:
+                            await self.notify_hackathon(h)
+                    else:
+                        logger.info("Page content changed for %s, but no new hackathons were detected (suppressing alert)", title)
+        elif status == "updated":
+            # Significant content modification detected on a general watch!
             logger.info("Content change detected for watch: %s (%s)", title, url)
             await self.notify_users_of_change(title=title, url=url, snippet=content[:300])
 

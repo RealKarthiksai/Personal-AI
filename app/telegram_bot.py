@@ -39,8 +39,10 @@ from telegram.ext import (
 from app.config import config
 from app.database import database
 from app.services.chat_service import ChatService
+from app.services.debouncer import TelegramDebouncer
 from app.services.telegram_client import TelegramClient
 from app.services.telegram_handler import (
+    TelegramUpdate,
     handle_command,
     handle_text_message,
     parse_update,
@@ -86,15 +88,34 @@ class _SenderAdapter:
         return await self._client.send_document(chat_id=to, document_path=document_path, caption=caption)
 
 
-# Global references for graceful shutdown.
+# Global references for graceful shutdown and debouncing.
 _application: Optional[Application] = None
+_debouncer: TelegramDebouncer = TelegramDebouncer(delay=1.1, heartbeat_interval=4.0)
+
+
+async def _handle_debounced_burst(chat_id: str, burst: list[TelegramUpdate]) -> None:
+    """Invoked by the debouncer when a burst settles."""
+    if not burst or _service is None:
+        return
+    sender = _SenderAdapter(_build_client())
+    primary_update = burst[-1]
+    request_id = str(primary_update.update_id if primary_update.update_id else "system")
+    await handle_text_message(
+        update=primary_update,
+        service=_service,
+        sender=sender,
+        request_id=request_id,
+        burst=burst,
+    )
+
+
 async def _command_dispatcher(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     service: ChatService,
     sender,
 ) -> None:
-    """Route an incoming update to command or text handling."""
+    """Route an incoming update to command or debounced text handling."""
     request_id = str(update.update_id if update.update_id else "system")
     raw = update.to_dict() if update else {}
     parsed = parse_update(raw)
@@ -119,13 +140,9 @@ async def _command_dispatcher(
             request_id=request_id,
         )
     else:
-        await sender.send_chat_action(to=parsed.chat_id, action="typing")
-        await handle_text_message(
-            update=parsed,
-            service=service,
-            sender=sender,
-            request_id=request_id,
-        )
+        _debouncer.set_sender(sender)
+        _debouncer.set_handler(_handle_debounced_burst)
+        await _debouncer.push(parsed, request_id=request_id)
 
 
 async def _start_command(
@@ -238,6 +255,8 @@ async def _run_polling() -> None:
     application = build_application()
     _application = application
     _service = ChatService(sender=_SenderAdapter(_build_client()))
+    _debouncer.set_sender(_SenderAdapter(_build_client()))
+    _debouncer.set_handler(_handle_debounced_burst)
 
     # Initialize the database and PTB application.
     database.init_db()
@@ -275,6 +294,7 @@ async def _run_polling() -> None:
     await stop_event.wait()
 
     logger.info("Shutdown signal received; stopping Telegram bot...")
+    await _debouncer.shutdown()
     await application.updater.stop()
     await application.stop()
     await application.shutdown()

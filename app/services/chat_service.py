@@ -21,7 +21,7 @@ All steps are async-safe.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List, Optional, Protocol
+from typing import Iterable, List, Optional, Protocol, Set
 
 from app.config import config
 from app.context.temporal import build_system_temporal_prompt
@@ -59,9 +59,9 @@ DEFAULT_CONVERSATIONAL_PROMPT = (
     "User: I'm really tired and don't feel like working today\n"
     "Karna: Cool story. I don't really care, but tell me if there's anything you actually need done.\n\n"
     "User: can you check if the backend server is running?\n"
-    "Karna: Port 8000 is running. Surprisingly, you haven't broken it yet.\n\n"
+    "Karna: The backend server is running. [tool result: <omitted>]\n\n"
     "User: find hackathons in hyderabad this month\n"
-    "Karna: Whatever, here's what's active: Telangana AI Summit on Nov 28 (https://telangana.gov.in/hack). Go register or don't, up to you."
+    "Karna: Here's what's active. [tool result: <omitted>] Go register or don't, up to you."
 )
 
 DEFAULT_RESEARCH_PROMPT = (
@@ -124,6 +124,7 @@ class ChatService:
         request_id: str = "system",
         sender: Optional[MessageSender] = None,
         channel: str = "telegram",
+        exclude_external_ids: Optional[Iterable[str]] = None,
     ) -> dict:
         """Run the full pipeline for one inbound message.
 
@@ -223,13 +224,19 @@ class ChatService:
         # Starting a new conversation is timing-driven: if the idle gap since the last message
         # exceeds session_timeout_seconds, get_active_session_history returns [],
         # starting fresh without carrying over old topics or search queries.
+        all_excluded: Set[str] = set()
+        if external_message_id:
+            all_excluded.add(external_message_id)
+        if exclude_external_ids:
+            all_excluded.update(exclude_external_ids)
+
         ref_time = repository.parse_db_timestamp(timestamp) or datetime.now(timezone.utc)
         history = repository.get_active_session_history(
             sender_id=sender_id,
             limit=self.max_history,
             timeout_seconds=self.session_timeout_seconds,
             reference_time=ref_time,
-            exclude_external_id=external_message_id,
+            exclude_external_ids=all_excluded,
         )
 
         # Extract previous inbound user message within the active session for follow-ups (e.g. "use searching")
@@ -268,6 +275,10 @@ class ChatService:
                 user_id=user_id,
                 channel=channel,
             )
+
+            # Record session reset watermark if reset command or phrase was executed
+            if tool_result.tool_name == "reset":
+                repository.record_session_reset(sender_id)
 
             active_sender = sender if sender is not None else self.sender
             message_id: Optional[str] = None
