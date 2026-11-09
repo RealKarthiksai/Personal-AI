@@ -49,8 +49,8 @@ class ChangeDetectionClient:
             headers["x-api-key"] = self.api_key
         return headers
 
-    async def fetch_page_content(self, url: str) -> str:
-        """Fetch webpage and return clean plain text."""
+    async def fetch_page_raw(self, url: str) -> str:
+        """Fetch webpage and return raw HTML text."""
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -58,7 +58,12 @@ class ChangeDetectionClient:
         async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
-            return extract_clean_text(resp.text)
+            return resp.text
+
+    async def fetch_page_content(self, url: str) -> str:
+        """Fetch webpage and return clean plain text."""
+        raw = await self.fetch_page_raw(url)
+        return extract_clean_text(raw)
 
     def compute_hash(self, text: str) -> str:
         """Compute SHA-256 hash of text content."""

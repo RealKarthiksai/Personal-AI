@@ -210,17 +210,18 @@ class RSSService:
         total_inserted = 0
         total_updated = 0
 
-        for sub in subs:
-            url = sub["url"]
-            category = sub.get("category")
-            try:
-                res = await self.sync_feed(url, category=category)
-                results[url] = res.model_dump()
-                total_inserted += res.inserted
-                total_updated += res.updated
-            except Exception as exc:
-                logger.error("Error syncing feed %s: %s", url, exc)
-                results[url] = {"error": str(exc), "inserted": 0, "updated": 0}
+        # Fetch and ingest all feeds in parallel using asyncio.gather
+        if subs:
+            coros = [self.sync_feed(sub["url"], category=sub.get("category")) for sub in subs]
+            res_list = await asyncio.gather(*coros)
+
+            for sub, res in zip(subs, res_list):
+                url = sub["url"]
+                results[url] = res.model_dump() if res else {"error": "", "inserted": 0, "updated": 0}
+                total_inserted += (res.inserted if res else 0)
+                total_updated += (res.updated if res else 0)
+        else:
+            results = {}
 
         return {
             "feeds_synced": len(subs),

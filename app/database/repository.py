@@ -6,9 +6,8 @@ webhook delivery is guarded by a unique constraint on external_message_id.
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Iterable, List, Optional, Set
 
 from app.database.database import transaction
 from app.database.models import Message, Sender
@@ -154,6 +153,7 @@ def get_active_session_history(
     timeout_seconds: int = 1800,
     reference_time: Optional[datetime] = None,
     exclude_external_id: Optional[str] = None,
+    exclude_external_ids: Optional[Iterable[str]] = None,
 ) -> List[dict]:
     """Retrieve conversation messages for the current active session.
 
@@ -162,6 +162,7 @@ def get_active_session_history(
     most recent message exceeds timeout_seconds, the previous session has expired
     and an empty list is returned.
 
+    Only messages after the latest session reset watermark (if any) are returned.
     If the latest message is within timeout_seconds, messages in the continuous active
     session are returned in chronological order (oldest first), up to `limit` entries.
     """
@@ -173,19 +174,26 @@ def get_active_session_history(
     with transaction() as conn:
         rows = conn.execute(
             """
-            SELECT external_message_id, direction, text, timestamp, created_at
+            SELECT id, external_message_id, direction, text, timestamp, created_at
             FROM messages
             WHERE sender_id = ?
+              AND id > COALESCE((SELECT reset_after_message_id FROM session_resets WHERE sender_id = ?), 0)
             ORDER BY created_at DESC, id DESC
             LIMIT ?
             """,
-            (sender_id, max(limit + 20, 50)),
+            (sender_id, sender_id, max(limit + 20, 50)),
         ).fetchall()
+
+    excluded: Set[str] = set()
+    if exclude_external_id:
+        excluded.add(exclude_external_id)
+    if exclude_external_ids:
+        excluded.update(exclude_external_ids)
 
     filtered_rows = [
         row
         for row in rows
-        if not (exclude_external_id and row["external_message_id"] == exclude_external_id)
+        if not (row["external_message_id"] and row["external_message_id"] in excluded)
     ]
 
     if not filtered_rows:
@@ -220,6 +228,7 @@ def get_active_session_history(
     # Reverse so oldest comes first (natural chronological order)
     return [
         {
+            "id": row["id"],
             "direction": row["direction"],
             "text": row["text"],
             "timestamp": row["timestamp"],
@@ -227,6 +236,41 @@ def get_active_session_history(
         }
         for row in reversed(active_rows)
     ]
+
+
+def record_session_reset(sender_id: str, after_message_id: Optional[int] = None) -> int:
+    """Record a session reset watermark for sender_id.
+
+    If after_message_id is not provided, uses COALESCE(MAX(id), 0) from messages for sender_id.
+    Returns the recorded watermark ID.
+    """
+    with transaction() as conn:
+        if after_message_id is None:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(id), 0) AS max_id FROM messages WHERE sender_id = ?",
+                (sender_id,),
+            ).fetchone()
+            after_message_id = int(row["max_id"]) if row else 0
+
+        conn.execute(
+            """
+            INSERT INTO session_resets (sender_id, reset_after_message_id)
+            VALUES (?, ?)
+            ON CONFLICT(sender_id) DO UPDATE SET reset_after_message_id = excluded.reset_after_message_id
+            """,
+            (sender_id, int(after_message_id)),
+        )
+        return int(after_message_id)
+
+
+def get_session_reset_watermark(sender_id: str) -> int:
+    """Return the current reset watermark message ID for sender_id, or 0 if none."""
+    with transaction() as conn:
+        row = conn.execute(
+            "SELECT reset_after_message_id FROM session_resets WHERE sender_id = ?",
+            (sender_id,),
+        ).fetchone()
+        return int(row["reset_after_message_id"]) if row else 0
 
 
 def mark_processing(external_message_id: str, status: str) -> None:

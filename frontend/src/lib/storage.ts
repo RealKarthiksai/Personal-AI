@@ -1,6 +1,6 @@
 import { Blueprint, SEED_BLUEPRINT } from "@/data/index";
 
-const STORAGE_KEY = "agent-blueprint:v1";
+const STORAGE_KEY = "agent-blueprint:v3";
 
 export function loadBlueprint(): Blueprint | null {
   if (typeof window === "undefined") return null;

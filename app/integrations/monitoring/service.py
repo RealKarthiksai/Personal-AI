@@ -7,15 +7,23 @@ Telegram notifications.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import html
+import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from bs4 import BeautifulSoup
 
 from app.config import config
 from app.database.database import transaction
+from app.database.repository import save_extracted_entity
 from app.ingestion.pipeline import IngestionPipeline, pipeline as default_pipeline
 from app.ingestion.storage import get_record_versions, upsert_record
 from app.integrations.monitoring.client import ChangeDetectionClient, monitoring_client
+from app.schemas.entities import Hackathon
 from app.schemas.external import ExternalRecord, IngestionResult
 from app.services.telegram_client import TelegramClient
 from app.utils.logging import get_logger
@@ -198,8 +206,11 @@ class MonitoringService:
         results: Dict[str, Any] = {}
         changed_count = 0
 
-        for w in watches:
-            res = await self.check_watch(w)
+        # Check all watches in parallel using asyncio.gather
+        coros = [self.check_watch(w) for w in watches]
+        res_list = await asyncio.gather(*coros)
+
+        for w, res in zip(watches, res_list):
             results[w["watch_id"]] = res
             if res.get("status") == "updated":
                 changed_count += 1

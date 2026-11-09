@@ -35,8 +35,8 @@ class AntigravityRunner:
             cmd.extend(["--mode", "plan"])
         elif job.mode == JobMode.EDIT:
             cmd.extend(["--mode", "accept-edits"])
-            if job.autonomous:
-                cmd.append("--dangerously-skip-permissions")
+        if job.autonomous:
+            cmd.append("--dangerously-skip-permissions")
 
         # Resume conversation if provided
         if job.conversation_id:

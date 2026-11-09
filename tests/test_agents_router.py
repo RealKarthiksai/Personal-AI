@@ -166,3 +166,15 @@ async def test_tool_router_agent_delegation_action_mode():
     assert res.action_card is not None
     assert "Agent Task Dispatch" in res.action_card
     assert res.action_keyboard is not None
+
+
+def test_policy_denial_formatting(monkeypatch):
+    """Verify that policy denial formats correctly without crashing on html.escape."""
+    monkeypatch.setattr(config, "agents_enabled", False)
+    req = parse_deterministic_request("/agent agy stop running the website")
+    assert req is not None
+    res = dispatch_agent_request(req, sender_id="12345")
+    assert res.mode == ResponseMode.DIRECT
+    assert "Policy Denial" in res.direct
+    assert "AGENTS_ENABLED=false" in res.direct
+

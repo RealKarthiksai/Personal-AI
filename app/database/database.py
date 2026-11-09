@@ -160,6 +160,11 @@ CREATE TABLE IF NOT EXISTS notification_outbox (
     sent_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS session_resets (
+    sender_id TEXT PRIMARY KEY,
+    reset_after_message_id INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_external_records_source_type
     ON external_records (source, record_type);
 CREATE INDEX IF NOT EXISTS idx_external_records_published
@@ -408,6 +413,16 @@ def init_db(force: bool = False) -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS ix_delivered ON delivered_items(user_id, record_id, delivered_at)")
+
+        # Migration: Create session_resets table for watermark tracking
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_resets (
+                sender_id TEXT PRIMARY KEY,
+                reset_after_message_id INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
 
     _init_lock = True
     _last_initialized_url = config.database_url

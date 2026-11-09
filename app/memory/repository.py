@@ -181,7 +181,7 @@ def search_memories_fts(
     tokens = clean_q.split()
     if not tokens:
         return []
-    fts_query = " OR ".join(tokens)
+    fts_query = " AND ".join(tokens)
 
     with transaction() as conn:
         rows = conn.execute(
