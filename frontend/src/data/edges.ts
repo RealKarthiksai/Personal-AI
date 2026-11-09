@@ -27,4 +27,19 @@ export const EDGES: Edge[] = [
   { id: "edge-router-to-openalex", source: "node-tool-router", target: "node-openalex-integration", label: "paper_search", condition: "intent = academic", animated: true },
   { id: "edge-router-to-rss", source: "node-tool-router", target: "node-rss-integration", label: "feed_url", condition: "intent = news/feed", animated: true },
   { id: "edge-scheduler-to-chat", source: "node-scheduler", target: "node-chat-service", label: "scheduled_trigger", condition: "cron event", animated: true },
+  // ---- Agent Delegation Edges ----
+  { id: "edge-router-to-agent", source: "node-tool-router", target: "node-agent-router", label: "dispatch_request", condition: "intent = agent delegation (/agent, cline, agy)", animated: true },
+  { id: "edge-agent-router-to-supervisor", source: "node-agent-router", target: "node-agent-supervisor", label: "confirmed_job {id, agent, mode}", condition: "user confirmed via inline button", animated: true },
+  { id: "edge-supervisor-to-git", source: "node-agent-supervisor", target: "node-git-safety", label: "pre_run_snapshot", condition: "mode = edit", animated: true },
+  { id: "edge-supervisor-to-cline", source: "node-agent-supervisor", target: "node-cline-agent", label: "spawn_pty {cline}", condition: "agent = cline", animated: true },
+  { id: "edge-supervisor-to-agy", source: "node-agent-supervisor", target: "node-antigravity-agent", label: "spawn_pty {agy}", condition: "agent = antigravity", animated: true },
+  { id: "edge-supervisor-to-client", source: "node-agent-supervisor", target: "node-telegram-client", label: "stream_progress + final_report", animated: true },
+  // ---- Memory Subsystem Edges ----
+  { id: "edge-chat-to-memory", source: "node-chat-service", target: "node-memory-subsystem", label: "retrieve_memories + extract_rules", animated: true },
+  { id: "edge-memory-to-database", source: "node-memory-subsystem", target: "node-database", label: "FTS5 index, decay tiers, profile", animated: true },
+  // ---- Website Monitoring Edges ----
+  { id: "edge-router-to-monitoring", source: "node-tool-router", target: "node-monitoring-service", label: "watch_command", condition: "intent = /watches", animated: true },
+  { id: "edge-scheduler-to-monitoring", source: "node-scheduler", target: "node-monitoring-service", label: "periodic_diff_check", condition: "interval = 3 hours", animated: true },
+  { id: "edge-monitoring-to-database", source: "node-monitoring-service", target: "node-database", label: "store_content_hash & diff_alerts", animated: true },
+  { id: "edge-monitoring-to-client", source: "node-monitoring-service", target: "node-telegram-client", label: "change_alert_notification", condition: "content modified", animated: true },
 ];

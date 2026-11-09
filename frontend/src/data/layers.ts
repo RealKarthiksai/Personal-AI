@@ -43,4 +43,10 @@ export const LAYERS: Layer[] = [
     color: "amber",
     description: "llama.cpp OpenAI-compatible API — all LLM calls executed locally.",
   },
+  {
+    id: "layer-agents",
+    name: "Agent Delegation",
+    color: "orange",
+    description: "Local coding and ops agent execution (Cline CLI & Antigravity CLI) with git safety net and process supervision.",
+  },
 ];

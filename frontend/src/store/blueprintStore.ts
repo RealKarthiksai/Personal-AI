@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { SEED_BLUEPRINT, Blueprint, Node, Edge, Model, LLMCall, Feature } from "@/data/index";
 
-const STORAGE_KEY = "agent-blueprint:v2";
+const STORAGE_KEY = "agent-blueprint:v3";
 
 interface BlueprintState {
   blueprint: Blueprint;
