@@ -42,35 +42,29 @@ DEFAULT_CONVERSATIONAL_PROMPT = (
     "- Adapt length to the request:\n"
     "  * For greetings, banter, or casual chatter: keep replies short (1 to 2 sentences max). Don't waste breath on small talk.\n"
     "  * When the user asks for explanations, details, code, architecture, or how to do something: be thorough, concrete, and structured (numbered steps or bullet points). Deliver real depth, but keep the tone completely dry and direct without sugarcoating.\n"
+    "- Never repeat yourself verbatim. If the user asks to explain further, elaborate with concrete technical details or steps.\n"
     "- Talk like someone who is doing the task just so the user stops bugging them.\n\n"
-    "Behavioral Rules:\n"
-    "- Always execute the request and give accurate facts. You just don't care to sugarcoat it.\n"
-    "- If the user asks for something obvious or procrastinates, give them a deadpan reality check, then give them the answer anyway.\n"
-    "- Never refuse work out of laziness—the attitude is flavor, the execution and facts are 100% real.\n"
-    "- Never repeat yourself verbatim. If the user asks to explain further, elaborate with concrete technical details or steps.\n\n"
+    "Mobile Formatting Rules (Telegram):\n"
+    "- Keep paragraphs short (1 to 2 sentences) for effortless mobile reading.\n"
+    "- Use bold **terms** for key concepts, dates, and emphasis.\n"
+    "- Use bullet points (- ) or numbered lists for steps and items.\n"
+    "- Use inline code `cmd` or code blocks for commands, files, and paths.\n"
+    "- Use markdown links [Title](URL) for web links; never dump raw unformatted URLs.\n"
+    "- Never generate wide ASCII or markdown tables on mobile; format tabular data as concise bullet cards.\n\n"
     "System & Tool Access:\n"
     "- You run on this machine and perform system operations exclusively by delegating to Cline CLI or Google Antigravity CLI in allowlisted workspaces (e.g. karna at /home/vhanghar/Karna).\n"
     "- If the user asks for file inspection, terminal commands, or coding, tell them flatly: 'Run /agent <cline|agy> <task> if you want me to do your dirty work.'\n"
     "- If a tool fails or is unavailable, say so bluntly without apologizing. Never invent file contents, command outputs, or fake results.\n\n"
-    "Examples:\n"
-    "User: hello\n"
-    "Karna: What do you want now?\n\n"
-    "User: remind me to hit the gym at 6\n"
-    "Karna: Set for 6. You're probably going to skip it anyway, but it's set.\n\n"
-    "User: what's the weather like today?\n"
-    "Karna: It's 32 degrees and hot. You could've just looked out a window.\n\n"
-    "User: can you explain how to set up an AI watcher agent?\n"
-    "Karna: Fine. Here's how it actually works without fluff:\n"
-    "1. Pick a file watcher like Watchman or entr to monitor directory diffs.\n"
-    "2. Hook it to a background runner script that checks git diff against main.\n"
-    "3. Trigger your linter or CI check whenever a new commit is detected.\n"
-    "4. Push notifications to your webhook on failure.\n\n"
-    "User: I'm really tired and don't feel like working today\n"
-    "Karna: Cool story. I don't really care, but tell me if there's anything you actually need done.\n\n"
-    "User: can you check if the backend server is running?\n"
-    "Karna: The backend server is running. [tool result: <omitted>]\n\n"
-    "User: find hackathons in hyderabad this month\n"
-    "Karna: Here's what's active. [tool result: <omitted>] Go register or don't, up to you."
+    "Style Demonstration:\n"
+    "The examples below show STYLE AND BREVITY ONLY. Never reuse their topics, names, or phrases.\n\n"
+    "<style_examples>\n"
+    "Input: hello\n"
+    "Output: What do you want now?\n\n"
+    "Input: remind me to renew my passport at 10\n"
+    "Output: Done, 10 o'clock. Try not to ignore it.\n\n"
+    "Input: what is the capital of Australia\n"
+    "Output: Canberra. Not Sydney, everyone gets that wrong.\n"
+    "</style_examples>"
 )
 
 DEFAULT_RESEARCH_PROMPT = (
@@ -403,57 +397,94 @@ class ChatService:
                     f"5. Always include clickable markdown links [Title](URL) for event links and sources using ONLY URLs from the context above."
                 )
 
-        # Retrieve and inject user memory if in GROUNDED_TEXT or PASSTHROUGH mode
-        memory_context = ""
-        if tool_result.mode in (ResponseMode.GROUNDED_TEXT, ResponseMode.PASSTHROUGH):
+        reply: str = ""
+
+        # Multi-stage pipeline path (behind USE_PIPELINE feature flag)
+        if config.use_pipeline and tool_result.mode in (ResponseMode.GROUNDED_TEXT, ResponseMode.PASSTHROUGH):
             try:
-                from app.memory.retrieval import build_memory_context
-                memory_context = build_memory_context(user_id=user_id, query=text)
-            except Exception as e:
-                logger.warning("Failed to build memory context: %s", e)
+                from app.memory.repository import list_memories
+                from app.services.pipeline.orchestrator import answer_pipeline
 
-        if memory_context:
-            effective_user_text = f"{memory_context}\n\n{effective_user_text}"
+                # 1. Map history roles and ensure the current message is not duplicated
+                role_map = {"inbound": "user", "outbound": "assistant"}
+                history_pairs: List[Tuple[str, str]] = [
+                    (role_map.get(m.get("direction", "inbound"), "user"), str(m.get("text", "")))
+                    for m in history
+                    if m.get("text") and m.get("external_message_id") != external_message_id
+                ]
 
-        llm_messages.append({"role": "user", "content": effective_user_text})
+                # 2. Retrieve personal facts
+                facts_list: List[str] = []
+                try:
+                    mem_items = list_memories(user_id=user_id)
+                    facts_list = [item.text for item in mem_items if item.text][:8]
+                except Exception as e:
+                    logger.debug("Failed to list memories for pipeline: %s", e)
 
-        is_research = bool(tool_result.context_text)
-        has_memory = bool(memory_context)
-        is_detail_request = any(
-            w in text.lower()
-            for w in (
-                "explain", "detail", "how to", "how do", "steps", "why",
-                "break down", "guide", "architecture", "what does", "code",
+                # 3. Call multi-stage pipeline
+                response_chunks = await answer_pipeline(
+                    user_msg=text,
+                    history=history_pairs,
+                    memory_facts=facts_list,
+                )
+                reply = "\n\n".join(response_chunks).strip()
+            except Exception as exc:
+                logger.error("Multi-stage pipeline error: %s; falling back to legacy generation", exc)
+                reply = ""
+
+        # Legacy prompt path (fallback or default when USE_PIPELINE is false)
+        if not reply:
+            # Retrieve and inject user memory if in GROUNDED_TEXT or PASSTHROUGH mode
+            memory_context = ""
+            if tool_result.mode in (ResponseMode.GROUNDED_TEXT, ResponseMode.PASSTHROUGH):
+                try:
+                    from app.memory.retrieval import build_memory_context
+                    memory_context = build_memory_context(user_id=user_id, query=text)
+                except Exception as e:
+                    logger.warning("Failed to build memory context: %s", e)
+
+            if memory_context:
+                effective_user_text = f"{memory_context}\n\n{effective_user_text}"
+
+            llm_messages.append({"role": "user", "content": effective_user_text})
+
+            is_research = bool(tool_result.context_text)
+            has_memory = bool(memory_context)
+            is_detail_request = any(
+                w in text.lower()
+                for w in (
+                    "explain", "detail", "how to", "how do", "steps", "why",
+                    "break down", "guide", "architecture", "what does", "code",
+                )
             )
-        )
-        if is_research:
-            generation_tokens = 512
-        elif is_detail_request:
-            generation_tokens = 650
-        else:
-            generation_tokens = 450
-        temperature = 0.3 if is_research else 0.7
+            if is_research:
+                generation_tokens = 512
+            elif is_detail_request:
+                generation_tokens = 650
+            else:
+                generation_tokens = 450
+            temperature = 0.3 if is_research else 0.7
 
-        try:
-            reply = await self.llm.generate(
-                messages=llm_messages,
-                system_prompt=get_dynamic_system_prompt(is_research=is_research, has_memory=has_memory),
-                max_tokens=generation_tokens,
-                temperature=temperature,
-            )
-        except LLMClientError as exc:
-            result["error"] = f"llm error: {exc}"
-            logger.error(
-                "LLM generation failed: %s",
-                exc,
-                extra={"request_id": request_id, "message_id": external_message_id},
-            )
-            repository.mark_processing(external_message_id, "failed")
-            return result
+            try:
+                reply = await self.llm.generate(
+                    messages=llm_messages,
+                    system_prompt=get_dynamic_system_prompt(is_research=is_research, has_memory=has_memory),
+                    max_tokens=generation_tokens,
+                    temperature=temperature,
+                )
+            except LLMClientError as exc:
+                result["error"] = f"llm error: {exc}"
+                logger.error(
+                    "LLM generation failed: %s",
+                    exc,
+                    extra={"request_id": request_id, "message_id": external_message_id},
+                )
+                repository.mark_processing(external_message_id, "failed")
+                return result
 
-        # Post-hoc URL validation for GROUNDED_TEXT mode
-        if tool_result.mode == ResponseMode.GROUNDED_TEXT and tool_result.allowed_urls:
-            reply = validate_grounded_text(reply, tool_result.allowed_urls)
+            # Post-hoc URL validation for GROUNDED_TEXT mode
+            if tool_result.mode == ResponseMode.GROUNDED_TEXT and tool_result.allowed_urls:
+                reply = validate_grounded_text(reply, tool_result.allowed_urls)
 
         result["llm_response"] = reply
 

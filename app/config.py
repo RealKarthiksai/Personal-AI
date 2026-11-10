@@ -29,6 +29,14 @@ class Config:
         self.llm_model = s.llm_model
         self.llm_api_key = s.llm_api_key
 
+        # Multi-Stage Pipeline
+        self.use_pipeline = s.use_pipeline
+        self.llm_fast_url = s.llm_fast_url.rstrip("/") if s.llm_fast_url else "http://127.0.0.1:8081"
+        self.llm_smart_url = s.llm_smart_url.rstrip("/") if s.llm_smart_url else "http://127.0.0.1:8082"
+        self.max_pages = s.max_pages
+        self.page_chars = s.page_chars
+        self.stage_timeout = s.stage_timeout
+
         # Telegram Bot API (active channel)
         self.telegram_bot_token = s.telegram_bot_token
         self.telegram_allowed_user_ids = s.telegram_allowed_user_ids
