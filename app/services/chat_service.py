@@ -398,6 +398,7 @@ class ChatService:
                 )
 
         reply: str = ""
+        response_chunks: List[str] = []
 
         # Multi-stage pipeline path (behind USE_PIPELINE feature flag)
         if config.use_pipeline and tool_result.mode in (ResponseMode.GROUNDED_TEXT, ResponseMode.PASSTHROUGH):
@@ -504,7 +505,15 @@ class ChatService:
         active_sender = sender if sender is not None else self.sender
         message_id: Optional[str] = None
         if active_sender is not None:
-            message_id = await active_sender.send_text(to=sender_id, text=reply)
+            if response_chunks and len(response_chunks) > 1:
+                for idx, chunk in enumerate(response_chunks):
+                    if idx > 0:
+                        await asyncio.sleep(0.3)
+                    mid = await active_sender.send_text(to=sender_id, text=chunk)
+                    if mid:
+                        message_id = mid
+            else:
+                message_id = await active_sender.send_text(to=sender_id, text=reply)
         result["message_id"] = message_id
         result["sent"] = bool(message_id)
 
