@@ -1,0 +1,31 @@
+# Casual Chat
+hi
+I'm feeling bored, what should I do?
+Tell me a harsh truth about productivity.
+Who made you and why?
+
+# Reminders & Tasks
+Remind me to pay the electricity bill at 7pm tonight.
+Set a reminder for my dentist checkup tomorrow at 11am.
+Can you schedule a quick call with Alex for 4pm?
+
+# Factual & Current Web Search
+What is the latest SpaceX Starship launch status?
+Find upcoming tech conferences or hackathons in Hyderabad.
+What is the current price of Ethereum today?
+Who won the most recent ICC Cricket World Cup?
+
+# Personal Facts & Memory
+I moved to Pune last month and started learning Rust.
+My pet dog's name is Bruno and he is a golden retriever.
+I prefer drinking green tea instead of coffee in the mornings.
+I am building an autonomous personal AI called Karna.
+
+# Explanations & Technical Advice
+How does git cherry-pick work without merging the whole branch?
+Explain the practical difference between a process and a thread.
+How do I configure CORS properly in FastAPI?
+
+# Edge Cases & Opinions
+Is Python better than Go for backend services?
+Should I buy an iPhone or an Android phone next?

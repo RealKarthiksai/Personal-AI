@@ -37,6 +37,14 @@ class Settings(BaseSettings):
     llm_model: Optional[str] = Field(default=None)
     llm_api_key: Optional[str] = Field(default=None)
 
+    # --- Multi-Stage Pipeline ------------------------------------------------
+    use_pipeline: bool = Field(default=False)
+    llm_fast_url: str = Field(default="http://127.0.0.1:8081")
+    llm_smart_url: str = Field(default="http://127.0.0.1:8082")
+    max_pages: int = Field(default=5)
+    page_chars: int = Field(default=2500)
+    stage_timeout: int = Field(default=120)
+
     # --- Telegram Bot API ----------------------------------------------------
     telegram_bot_token: Optional[str] = Field(default=None)
     # Comma-separated allowed Telegram user IDs (integers, e.g. 123456789).

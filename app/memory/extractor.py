@@ -182,31 +182,66 @@ async def extract_facts_llm(
         "Extract personal facts from the utterance above as JSON:"
     )
 
-    try:
-        raw_reply = await llm_client.generate(
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=system_prompt,
-            max_tokens=300,
-            temperature=0.1,
-        )
-    except LLMClientError as e:
-        logger.warning("LLM fact extraction failed: %s", e)
-        return []
+    data = None
+    if config.use_pipeline:
+        try:
+            from app.services.llm_roles import call as role_call
+            FACT_SCHEMA = {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "category": {
+                            "type": "string",
+                            "enum": ["identity", "preference", "project", "person", "work", "general"],
+                        },
+                        "importance": {"type": "integer"},
+                        "confidence": {"type": "number"},
+                    },
+                    "required": ["text", "category", "importance", "confidence"],
+                    "additionalProperties": False,
+                },
+            }
+            data = await role_call(
+                "extractor",
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                schema=FACT_SCHEMA,
+                name="extracted_facts",
+            )
+        except Exception as e:
+            logger.debug("Pipeline extractor role failed: %s; falling back to direct LLM call", e)
+            data = None
 
-    # Parse JSON reply
-    try:
-        clean_json = raw_reply.strip()
-        if "```json" in clean_json:
-            clean_json = clean_json.split("```json", 1)[1].split("```", 1)[0].strip()
-        elif "```" in clean_json:
-            clean_json = clean_json.split("```", 1)[1].split("```", 1)[0].strip()
-
-        data = json.loads(clean_json)
-        if not isinstance(data, list):
+    if data is None:
+        try:
+            raw_reply = await llm_client.generate(
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=300,
+                temperature=0.1,
+            )
+        except LLMClientError as e:
+            logger.warning("LLM fact extraction failed: %s", e)
             return []
-    except Exception as e:
-        logger.debug("Failed to parse LLM JSON extraction: %s | raw=%r", e, raw_reply)
-        return []
+
+        # Parse JSON reply
+        try:
+            clean_json = raw_reply.strip()
+            if "```json" in clean_json:
+                clean_json = clean_json.split("```json", 1)[1].split("```", 1)[0].strip()
+            elif "```" in clean_json:
+                clean_json = clean_json.split("```", 1)[1].split("```", 1)[0].strip()
+
+            data = json.loads(clean_json)
+            if not isinstance(data, list):
+                return []
+        except Exception as e:
+            logger.debug("Failed to parse LLM JSON extraction: %s | raw=%r", e, raw_reply)
+            return []
 
     valid_facts: List[ExtractedFact] = []
     min_overlap = profile.grounding_min_overlap
