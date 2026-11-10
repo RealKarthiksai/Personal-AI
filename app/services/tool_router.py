@@ -947,6 +947,15 @@ class ToolRouter:
         # ----------------------------------------------------------------------
         # 5. Search Intent & Plan Generation via PlannerService
         # ----------------------------------------------------------------------
+        if config.use_pipeline:
+            # Multi-stage pipeline handles search planning, parallel fetching,
+            # and synthesis natively in chat_service without legacy 8001 calls.
+            return ToolExecutionResult(
+                tool_name="chat",
+                input_value=clean_text,
+                mode=ResponseMode.PASSTHROUGH,
+            )
+
         try:
             plan = await self.planner.plan_tasks(clean_text, previous_query=previous_query)
         except Exception as plan_exc:

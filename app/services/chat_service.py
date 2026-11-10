@@ -265,6 +265,7 @@ class ChatService:
 
         # Fast path: If mode is DIRECT, bypass LLM entirely (0 LLM calls, 100% deterministic)
         if tool_result.mode == ResponseMode.DIRECT:
+            result["execution_path"] = "direct_tool"
             reply = tool_result.direct or tool_result.context_text or "No data available."
             result["llm_response"] = reply
 
@@ -309,6 +310,7 @@ class ChatService:
 
         # Fast path: If mode is ACTION, send interactive confirmation card and bypass LLM entirely (0 LLM calls)
         if tool_result.mode == ResponseMode.ACTION:
+            result["execution_path"] = "direct_action"
             card_text = tool_result.action_card or tool_result.direct or tool_result.context_text or "Action required."
             result["llm_response"] = card_text
 
@@ -429,12 +431,19 @@ class ChatService:
                     memory_facts=facts_list,
                 )
                 reply = "\n\n".join(response_chunks).strip()
+                if reply:
+                    result["execution_path"] = "pipeline"
             except Exception as exc:
                 logger.error("Multi-stage pipeline error: %s; falling back to legacy generation", exc)
+                result["execution_path"] = "legacy_fallback"
+                result["pipeline_fallback"] = True
+                result["pipeline_error"] = str(exc)
                 reply = ""
 
         # Legacy prompt path (fallback or default when USE_PIPELINE is false)
         if not reply:
+            if "execution_path" not in result:
+                result["execution_path"] = "legacy"
             # Retrieve and inject user memory if in GROUNDED_TEXT or PASSTHROUGH mode
             memory_context = ""
             if tool_result.mode in (ResponseMode.GROUNDED_TEXT, ResponseMode.PASSTHROUGH):

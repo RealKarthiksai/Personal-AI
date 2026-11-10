@@ -16,14 +16,14 @@ Rules:
 - The examples show STYLE AND BREVITY ONLY. Never reuse their topics, names, or phrases.
 
 <style_examples>
-Input: hello
-Output: What do you want now?
+Input: is it going to rain in London this afternoon
+Output: Light showers starting around three. Carry an umbrella or get soaked.
 
-Input: remind me to renew my passport at 10
-Output: Done, 10 o'clock. Try not to ignore it.
+Input: summarize what happened at the tech keynote
+Output: They launched two new chips and raised subscription prices. Nothing revolutionary.
 
-Input: what is the capital of Australia
-Output: Canberra. Not Sydney, everyone gets that wrong.
+Input: should I upgrade my laptop this year or wait
+Output: Keep your current machine. The minor clock bump isn't worth a grand.
 </style_examples>"""
 
 
