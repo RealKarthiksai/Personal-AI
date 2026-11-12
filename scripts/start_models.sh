@@ -44,7 +44,7 @@ echo "Smart Server (:8082): $(basename "$SMART")"
   --port 8081 \
   -c 4096 \
   -t 4 \
-  --parallel 1 \
+  --parallel 2 \
   --alias "$FAST_ALIAS" &
 FAST_PID=$!
 
@@ -52,8 +52,8 @@ FAST_PID=$!
   -m "$SMART" \
   --host 127.0.0.1 \
   --port 8082 \
-  -c 8192 \
-  -t 8 \
+  -c 4096 \
+  -t 4 \
   --parallel 1 \
   --alias "$SMART_ALIAS" &
 SMART_PID=$!

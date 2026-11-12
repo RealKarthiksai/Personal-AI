@@ -31,8 +31,12 @@ async def reply_direct(
     user_msg: str,
     history: List[Tuple[str, str]],
     memory_facts: List[str],
+    lane: str = "smart",
 ) -> str:
-    """Generate a direct conversational reply adhering to Karna's persona and known user facts."""
+    """Generate a direct conversational reply adhering to Karna's persona and known user facts.
+
+    Uses 'persona' (Smart 9B) by default or 'persona_fast' (Fast 2B/4B) when specified.
+    """
     system_content = PERSONA
     if memory_facts:
         facts_list = "\n".join(f"- {f}" for f in memory_facts)
@@ -44,12 +48,39 @@ async def reply_direct(
         messages.append({"role": role, "content": text})
     messages.append({"role": "user", "content": user_msg})
 
+    role = "persona_fast" if lane == "fast" else "persona"
     try:
-        reply = await call("persona", messages)
+        reply = await call(role, messages)
         return str(reply).strip()
     except Exception as exc:
-        logger.warning("Persona direct reply failed: %s", exc)
-        return "I'm having trouble processing that right now."
+        logger.warning("Persona direct reply failed (%s): %s", role, exc)
+        if role != "persona_fast":
+            try:
+                reply = await call("persona_fast", messages)
+                return str(reply).strip()
+            except Exception as e2:
+                logger.warning("Persona fast fallback also failed: %s", e2)
+        return "Can't process that right now."
+
+
+async def rewrite_status(facts: str) -> str:
+    """One-shot fast persona rewrite for background job status updates."""
+    system_msg = (
+        f"{PERSONA}\n\n"
+        "State this in character in one short sentence, without changing the facts."
+    )
+    try:
+        reply = await call(
+            "persona_fast",
+            [
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": facts},
+            ],
+        )
+        return str(reply).strip()
+    except Exception as exc:
+        logger.debug("Persona rewrite_status failed: %s; using raw facts", exc)
+        return facts
 
 
 async def rewrite(draft: str, question: str) -> str:
@@ -74,5 +105,15 @@ async def rewrite(draft: str, question: str) -> str:
         )
         return str(reply).strip()
     except Exception as exc:
-        logger.warning("Persona rewrite failed: %s; using raw draft", exc)
-        return draft
+        logger.warning("Persona rewrite failed: %s; trying persona_fast fallback", exc)
+        try:
+            reply = await call(
+                "persona_fast",
+                [
+                    {"role": "system", "content": rewrite_system},
+                    {"role": "user", "content": f"Question: {question}\nDraft:\n{draft}"},
+                ],
+            )
+            return str(reply).strip()
+        except Exception:
+            return draft

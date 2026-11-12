@@ -1,0 +1,303 @@
+=== MULTI-STAGE PIPELINE EVALUATION REPORT ===
+Timestamp: 2026-11-12T11:44:57Z
+Total Evaluated Prompts: 23
+Fallback Count: 0 / 20
+Verbatim Example Repetitions: 0
+
+--- SYSTEM RESOURCES ---
+Initial:
+total        used        free      shared  buff/cache   available
+Mem:            15Gi        10Gi       1.5Gi        96Mi       4.4Gi       4.9Gi
+Swap:           30Gi       3.7Gi        26Gi
+NAME           TYPE       SIZE USED PRIO
+/swap/swapfile file      15.2G   0B    0
+/dev/zram0     partition 15.2G 3.7G  100
+
+Final:
+total        used        free      shared  buff/cache   available
+Mem:            15Gi        13Gi       391Mi        77Mi       2.2Gi       1.7Gi
+Swap:           30Gi       8.4Gi        21Gi
+NAME           TYPE       SIZE USED PRIO
+/swap/swapfile file      15.2G   0B    0
+/dev/zram0     partition 15.2G 8.4G  100
+
+--- DETAILED PROMPT RESULTS ---
+ID: 1
+Prompt: hi
+Path: pipeline_jobs
+Total Time: 26780.3 ms
+Reply:
+Hello. Nothing urgent here.
+--------------------------------------------------
+ID: 2
+Prompt: I'm feeling bored, what should I do?
+Path: pipeline_jobs
+Total Time: 188121.8 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 4031.7, 'filter_ms': 159496.7, 'synth_ms': 7766.7, 'persona_ms': 15.6, 'total_ms': 171311.3}
+Sources: ['https://sometimes-homemade.com/things-to-do-when-bored/', 'https://www.goodhousekeeping.com/life/a26872864/what-to-do-when-bored/', 'https://thoughtcatalog.com/january-nelson/2021/04/30-boring-hobbies-that-are-actually-super-exciting/']
+Reply:
+Things to do when bored can be elusive, leading to moments of staring blankly at the ceiling, wondering how to pass the time. There are things to do when bored that keep one busy with fun and meaningful tasks. - Start a Blog or Vlog: Share your passions, opinions, or expertise through writing or video content. - Start a Scrapbook: Gather photos, mementos, and decorative items to create a personali
+--------------------------------------------------
+ID: 3
+Prompt: Tell me a harsh truth about productivity.
+Path: pipeline_jobs
+Total Time: 300458.1 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 6094.8, 'filter_ms': 148658.8, 'synth_ms': 73731.9, 'persona_ms': 50747.7, 'total_ms': 279233.9}
+Sources: ['https://www.forbes.com/sites/hannahart/2024/01/25/productivity-and-the-hard-truth-about-time-management/', 'https://mellernotes.substack.com/p/10-hard-lessons-about-productivity', 'https://medium.com/mind-cafe/5-hard-truths-you-need-to-hear-about-making-a-daily-schedule-abb6d160551', 'https://www.linkedin.com/pulse/6-brutal-truths-productivity-one-wants-talk-hitesh-mohapatra', 'https://www.proofhub.com/articles/productivity-myths']
+Reply:
+<b>Productivity</b> isn&#x27;t about appearing busy; staying late or multitasking is often just a lie. You need <b>100% commitment</b> to actual work, not just a list of completed tasks.
+
+<i>   Focus on <b>deep work</b> instead of filling time.
+</i>   Stop letting planning distract from <b>execution</b>.
+
+<i>Sources:</i> <a href="https://www.forbes.com/sites/hannahart/2024/01/25/productivity-and-the-hard-truth-about-time-management/">1</a> • <a href="https://mellernotes.substack.com/p/10-hard-lessons-about-productivity">2</a> • <a href="https://www.linkedin.com/pulse/6-brutal-truths-productivity-one-wants-talk-hitesh-mohapatra">4</a>
+--------------------------------------------------
+ID: 4
+Prompt: Who made you and why?
+Path: pipeline_jobs
+Total Time: 70817.3 ms
+Reply:
+I am a large language model, trained by Google.
+My purpose is to process information and provide responses based on patterns in data.
+I do not have personal motivations or creators in the human sense.
+--------------------------------------------------
+ID: 5
+Prompt: Remind me to pay the electricity bill at 7pm tonight.
+Path: pipeline_jobs
+Total Time: 36378.6 ms
+Reply:
+Set a phone alarm for 7 PM.
+You won't remember otherwise.
+The bill will still be due regardless of your memory.
+--------------------------------------------------
+ID: 6
+Prompt: Set a reminder for my dentist checkup tomorrow at 11am.
+Path: pipeline_jobs
+Total Time: 26470.2 ms
+Reply:
+Add the appointment to your calendar immediately.
+Relying on memory is a bad habit.
+**Consequences** are real; don't ignore them.
+--------------------------------------------------
+ID: 7
+Prompt: Can you schedule a quick call with Alex for 4pm?
+Path: pipeline_jobs
+Total Time: 53115.9 ms
+Reply:
+I cannot make calls or manage your calendar.
+That requires **human action**.
+Check your own schedule and contact them directly.
+--------------------------------------------------
+ID: 8
+Prompt: What is the latest SpaceX Starship launch status?
+Path: pipeline_jobs
+Total Time: 200261.1 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 6892.9, 'filter_ms': 99750.7, 'synth_ms': 50549.5, 'persona_ms': 23850.5, 'total_ms': 181043.8}
+Sources: ['https://nextspaceflight.com/starship/', 'https://www.space.com/space-exploration/launches-spacecraft/spacex-starship-flight-15-1st-booster-ship-double-catch-full-recovery-what-time']
+Reply:
+SpaceX Starship Flight 15 is set for no earlier than Friday, Nov. 13, at 5:45 p.m. EST, with a window closing by 7 p.m. EST on Nov. 14. This attempt will try to catch both the Super Heavy booster and the Starship ship, pending final regulatory approval.
+
+<i>Sources:</i> <a href="https://nextspaceflight.com/starship/">1</a> • <a href="https://www.space.com/space-exploration/launches-spacecraft/spacex-starship-flight-15-1st-booster-ship-double-catch-full-recovery-what-time">2</a>
+--------------------------------------------------
+ID: 9
+Prompt: Find upcoming tech conferences or hackathons in Hyderabad.
+Path: pipeline_jobs
+Total Time: 390602.8 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 4370.5, 'filter_ms': 213609.1, 'synth_ms': 105288.8, 'persona_ms': 41165.1, 'total_ms': 364434.3}
+Sources: ['https://www.allconferencealert.com/hyderabad/technology', 'https://techsnap.in/events/city/hyderabad', 'https://businessanalyst.techcanvass.com/tech-conferences-in-hyderabad/', 'https://stayhappening.com/hyderabad--technology', 'https://www.hackathonradar.com/discover/hyderabad']
+Reply:
+<b>AI DHAMAKA 2026</b> hits November 14; no coding skills needed.
+
+WCSET follows on the 17th, with nuclear and robotics conferences on the 20th.
+
+Heroes of Hyderabad Season 3 and the Digital Marketing Summit are also listed.
+
+Startup meetups and a <b>Swecha</b> festival round out November.
+
+Hyderabad hosts <b>11 hackathons</b> total with an <b>$8,000</b> prize pool.
+
+<i>Sources:</i> <a href="https://www.allconferencealert.com/hyderabad/technology">1</a> • <a href="https://techsnap.in/events/city/hyderabad">2</a> • <a href="https://businessanalyst.techcanvass.com/tech-conferences-in-hyderabad/">3</a> • <a href="https://stayhappening.com/hyderabad--technology">4</a> • <a href="https://www.hackathonradar.com/discover/hyderabad">5</a>
+--------------------------------------------------
+ID: 10
+Prompt: What is the current price of Ethereum today?
+Path: pipeline_jobs
+Total Time: 502425.0 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 6140.3, 'filter_ms': 131226.0, 'synth_ms': 320757.3, 'persona_ms': 60.3, 'total_ms': 458185.0}
+Sources: ['https://in.tradingview.com/symbols/ETHUSD/', 'https://www.coindesk.com/price/ethereum']
+Reply:
+The current price of Ethereum (ETH) is 2,041.2 USD.
+--------------------------------------------------
+
+ID: 11
+Prompt: Who won the most recent ICC Cricket World Cup?
+Path: pipeline_jobs
+Total Time: 221597.9 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 3259.6, 'filter_ms': 106016.2, 'synth_ms': 43859.9, 'persona_ms': 44981.6, 'total_ms': 198117.3}
+Sources: ['https://en.wikipedia.org/wiki/List_of_Cricket_World_Cup_finals', 'https://www.jagranjosh.com/general-knowledge/list-of-all-the-odi-world-cup-winners-till-date-1746182528-1', 'https://www.topendsports.com/events/cricket-world-cup/winners.htm']
+Memory During:
+total        used        free      shared  buff/cache   available
+Mem:            15Gi        10Gi       542Mi        99Mi       5.4Gi       5.0Gi
+Swap:           30Gi       1.8Gi        28Gi
+NAME           TYPE       SIZE USED PRIO
+/swap/swapfile file      15.2G   0B    0
+/dev/zram0     partition 15.2G 1.8G  100
+Reply:
+<b>Australia</b> claimed the <b>ICC Cricket World Cup</b> title in 2023. They beat <b>India</b> in the final by 6 wickets.
+
+<i>Sources:</i> <a href="https://en.wikipedia.org/wiki/List_of_Cricket_World_Cup_finals">1</a> • <a href="https://www.jagranjosh.com/general-knowledge/list-of-all-the-odi-world-cup-winners-till-date-1746182528-1">2</a>
+--------------------------------------------------
+
+ID: 12
+Prompt: I moved to Pune last month and started learning Rust.
+Path: pipeline_jobs
+Total Time: 271242.7 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 4493.2, 'filter_ms': 122594.6, 'synth_ms': 88862.8, 'persona_ms': 32240.6, 'total_ms': 248191.4}
+Sources: ['https://www.radicaltechnologies.co.in/rust-programming-course-certification-with-training-in-pune/', 'https://www.theknowledgeacademy.com/in/courses/programming-training/rust-programming/pune/', 'https://rust-lang.org/learn/', 'https://github.com/pretzelhammer/rust-blog/blob/master/posts/learning-rust-in-2024.md', 'https://blog.jetbrains.com/rust/2024/09/20/how-to-learn-rust/']
+Reply:
+Start with &quot;The Book&quot; and &quot;Rust By Example&quot; to learn from first principles.
+
+Use the <b>Rust Standard Library</b> docs and <b>Rust Playground</b> before posting questions online.
+
+Local training in Pune is available from Radical Technologies and The Knowledge Academy for systems programming.
+
+<i>Sources:</i> <a href="https://www.radicaltechnologies.co.in/rust-programming-course-certification-with-training-in-pune/">1</a> • <a href="https://www.theknowledgeacademy.com/in/courses/programming-training/rust-programming/pune/">2</a> • <a href="https://rust-lang.org/learn/">3</a> • <a href="https://github.com/pretzelhammer/rust-blog/blob/master/posts/learning-rust-in-2024.md">4</a>
+--------------------------------------------------
+
+ID: 13
+Prompt: My pet dog's name is Bruno and he is a golden retriever.
+Path: pipeline_jobs
+Total Time: 114591.8 ms
+Reply:
+<b>Bruno</b> sounds like a good name for a <b>Golden Retriever</b>.
+
+He probably eats your snacks while you code in Rust.
+
+Keep him close; he might be the only one who understands your dry humor.
+--------------------------------------------------
+
+ID: 14
+Prompt: I prefer drinking green tea instead of coffee in the mornings.
+Path: pipeline_jobs
+Total Time: 100911.3 ms
+Reply:
+Green tea fits better than coffee for that low-energy vibe. It keeps you calm while you write code.
+
+The caffeine hit is slower, so you won't crash by noon.
+
+Just don't drink it too hot, or you'll burn your tongue.
+--------------------------------------------------
+
+ID: 15
+Prompt: I am building an autonomous personal AI called Karna.
+Path: pipeline_jobs
+Total Time: 94179.2 ms
+Reply:
+<b>Karna</b> sounds like a good name for a dry, unbothered assistant.
+
+Autonomous models usually need massive compute resources to run locally.
+
+Maybe start small and see if it actually works.
+--------------------------------------------------
+
+ID: 16
+Prompt: How does git cherry-pick work without merging the whole branch?
+Path: pipeline_jobs
+Total Time: 260016.1 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 4916.0, 'filter_ms': 121544.8, 'synth_ms': 77695.6, 'persona_ms': 29851.2, 'total_ms': 234007.8}
+Sources: ['https://www.atlassian.com/git/tutorials/cherry-pick', 'https://www.git-tower.com/learn/git/faq/cherry-pick', 'https://void.ma/en/publications/git-cherry-pick-guide/', 'https://git-scm.com/docs/git-cherry-pick']
+Reply:
+<b>cherry-pick</b> applies only the <b>diff</b> of selected commits instead of merging the whole branch. It records a new commit for each input on your current <b>HEAD</b>, letting you pick arbitrary changes by reference.
+
+<i>Sources:</i> <a href="https://www.atlassian.com/git/tutorials/cherry-pick">1</a> • <a href="https://www.git-tower.com/learn/git/faq/cherry-pick">2</a> • <a href="https://git-scm.com/docs/git-cherry-pick">4</a>
+--------------------------------------------------
+
+ID: 17
+Prompt: Explain the practical difference between a process and a thread.
+Path: pipeline_jobs
+Total Time: 281030.6 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 3697.8, 'filter_ms': 113765.9, 'synth_ms': 99662.2, 'persona_ms': 29748.1, 'total_ms': 246874.6}
+Sources: ['https://www.geeksforgeeks.org/operating-systems/difference-between-process-and-thread/', 'https://medium.com/@kaygeea/process-vs-thread-understanding-their-structural-differences-eb34a8175df0', 'https://algomaster.io/learn/concurrency-interview/processes-vs-threads', 'https://www.tutorialspoint.com/article/difference-between-process-and-thread', 'https://stackoverflow.com/questions/41962794/process-vs-thread-with-example']
+Reply:
+<b>Processes</b> own isolated memory, so a crash doesn&#x27;t take down others. <b>Threads</b> share that space, making communication fast and switching cheap. Spinning up a new process costs more than starting a thread.
+
+<i>Sources:</i> <a href="https://www.geeksforgeeks.org/operating-systems/difference-between-process-and-thread/">1</a> • <a href="https://medium.com/@kaygeea/process-vs-thread-understanding-their-structural-differences-eb34a8175df0">2</a> • <a href="https://algomaster.io/learn/concurrency-interview/processes-vs-threads">3</a>
+--------------------------------------------------
+
+ID: 18
+Prompt: How do I configure CORS properly in FastAPI?
+Path: pipeline_jobs
+Total Time: 629116.1 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 3238.4, 'filter_ms': 216742.8, 'synth_ms': 332206.4, 'persona_ms': 35067.1, 'total_ms': 587255.5}
+Sources: ['https://fastapi.tiangolo.com/tutorial/cors/', 'https://notes.kodekloud.com/docs/Python-API-Development-with-FastAPI/Deployment/What-Is-CORS/page', 'https://pytutorial.com/add-cors-middleware-to-fastapi-apps/', 'https://stackoverflow.com/questions/65635346/how-can-i-enable-cors-in-fastapi']
+Reply:
+<b>CORSMiddleware</b> must be imported from <code>fastapi.middleware.cors</code>. Add it via <code>app.add_middleware</code>.
+
+Define <b>allow_origins</b> as strings. Restrict to specific domains for production. Avoid wildcards like <code>[&#x27;*&#x27;]</code> in live environments.
+
+<i>Sources:</i> <a href="https://fastapi.tiangolo.com/tutorial/cors/">1</a> • <a href="https://notes.kodekloud.com/docs/Python-API-Development-with-FastAPI/Deployment/What-Is-CORS/page">2</a> • <a href="https://pytutorial.com/add-cors-middleware-to-fastapi-apps/">3</a> • <a href="https://stackoverflow.com/questions/65635346/how-can-i-enable-cors-in-fastapi">4</a>
+--------------------------------------------------
+
+ID: 19
+Prompt: Is Python better than Go for backend services?
+Path: pipeline_jobs
+Total Time: 243159.3 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 3916.0, 'filter_ms': 137493.3, 'synth_ms': 49748.4, 'persona_ms': 17482.0, 'total_ms': 208639.8}
+Sources: ['https://dev.to/_d7eb1c1703182e3ce1782/python-vs-go-for-backend-development-in-2026-an-honest-comparison-3pno', 'https://blog.jetbrains.com/go/2026/10/13/python-vs-go/', 'https://roadmap.sh/golang/vs-python', 'https://namastedev.com/blog/a-comparison-of-python-and-go-for-high-performance-backend-development/']
+Reply:
+Go wins on raw speed and concurrency. Python wins on ecosystem and velocity.
+
+<i>   Use Go for high-throughput, low-latency workloads.
+</i>   Use Python for data science and rapid prototyping.
+
+Pick the tool that matches your specific needs.
+--------------------------------------------------
+
+ID: 20
+Prompt: Should I buy an iPhone or an Android phone next?
+Path: pipeline_jobs
+Total Time: 201394.8 ms
+Stage Timings: {'planner_ms': 0.0, 'fetch_ms': 3196.6, 'filter_ms': 113517.7, 'synth_ms': 34689.9, 'persona_ms': 17119.8, 'total_ms': 168524.0}
+Sources: ['https://wotschofsky.com/blog/ios-vs-android', 'https://www.forbes.com/sites/forbes-personal-shopper/article/android-vs-iphone/', 'https://media.gbm.com/smartphone-comparison-109723']
+Reply:
+<b>Integration</b> matters if you love Apple&#x27;s ecosystem. <b>Customization</b> wins if you prefer Android&#x27;s flexibility.
+
+<i>   Check battery life and repair costs before buying.
+</i>   The <b>Google Pixel 8</b> is a strong Android alternative.
+*   Your choice rests on whether you value control or ease.
+--------------------------------------------------
+
+ID: multi_turn_followup
+Prompt: History: What is the capital of Japan? -> User: What is the best season to visit there?
+Path: pipeline_jobs
+Total Time: 278052.7 ms
+Reply:
+Spring and autumn offer the best weather and seasonal sights like cherry blossoms. These months are officially the <b>High Season</b> for travel. You must balance <b>crowds</b>, <b>cost</b>, and your <b>interests</b> instead of just chasing nice weather.
+
+<i>Sources:</i> <a href="https://www.japanhighlights.com/japan/best-time-to-visit">1</a> • <a href="https://www.travelandleisure.com/travel-tips/best-time-to-visit-japan">2</a> • <a href="https://www.guide2japan.com/plan-a-trip/best-time-to-visit-japan/">3</a>
+--------------------------------------------------
+
+ID: unknown_fact
+Prompt: What did I have for dinner yesterday evening?
+Path: pipeline_jobs
+Total Time: 126817.0 ms
+Reply:
+Sources lack your dinner details. confirms only <b>family</b> ate lasagna, not you.
+
+<i>Sources:</i> <a href="https://hinative.com/questions/11940847">1</a>
+--------------------------------------------------
+
+ID: concurrency_test
+Prompt: heavy search -> hi -> done yet? -> second search -> cancel
+Path: front_desk_concurrency
+Total Time: 109112.4 ms
+Reply:
+hi: Greetings. How may I assist? | status: **Patience** is a virtue, not a speed limit. Let the machine finish its **cool-down**. | cancel: Dropped it.
+--------------------------------------------------
+
+FINAL RESOURCE STATE:
+total        used        free      shared  buff/cache   available
+Mem:            15Gi        12Gi       446Mi       290Mi       3.5Gi       2.8Gi
+Swap:           30Gi       7.5Gi        22Gi
+NAME           TYPE       SIZE USED PRIO
+/swap/swapfile file      15.2G   0B    0
+/dev/zram0     partition 15.2G 7.5G  100

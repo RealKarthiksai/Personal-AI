@@ -16,10 +16,12 @@ def get_role_config(role: str) -> dict:
     smart_url = config.llm_smart_url
 
     roles: Dict[str, dict] = {
-        "planner":   dict(url=fast_url,  temperature=0.1, top_p=0.9, max_tokens=300),
-        "extractor": dict(url=fast_url,  temperature=0.0, top_p=0.9, max_tokens=300),
-        "synth":     dict(url=smart_url, temperature=0.3, top_p=0.8, top_k=20, max_tokens=600),
-        "persona":   dict(url=smart_url, temperature=0.7, top_p=0.8, top_k=20, presence_penalty=0.5, max_tokens=400),
+        "filter":       dict(url=fast_url,  temperature=0.0, top_p=0.9, max_tokens=400, timeout=180),
+        "synth":        dict(url=smart_url, temperature=0.3, top_p=0.8, top_k=20, max_tokens=500, timeout=600),
+        "persona":      dict(url=smart_url, temperature=0.7, top_p=0.8, top_k=20, presence_penalty=0.6, max_tokens=300, timeout=300),
+        "persona_fast": dict(url=fast_url,  temperature=0.7, top_p=0.8, top_k=20, presence_penalty=0.6, max_tokens=200, timeout=120),
+        "planner":      dict(url=fast_url,  temperature=0.1, top_p=0.9, max_tokens=300, timeout=120),
+        "extractor":    dict(url=fast_url,  temperature=0.0, top_p=0.9, max_tokens=300, timeout=120),
     }
     return dict(roles.get(role, roles["persona"]))
 
@@ -32,7 +34,7 @@ async def call(
 ) -> Any:
     cfg = get_role_config(role)
     url = cfg.pop("url")
-    timeout = float(config.stage_timeout)
+    timeout = float(cfg.pop("timeout", config.stage_timeout))
 
     body: Dict[str, Any] = {
         "messages": messages,

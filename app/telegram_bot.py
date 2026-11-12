@@ -293,7 +293,7 @@ async def _run_polling() -> None:
     await application.updater.start_polling(
         poll_interval=1.0,
         timeout=30,
-        drop_pending_updates=True,
+        drop_pending_updates=False,
     )
 
     # Wait until shutdown is requested.

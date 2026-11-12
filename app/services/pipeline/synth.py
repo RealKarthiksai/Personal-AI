@@ -40,5 +40,16 @@ async def synthesize(question: str, context: str, pages: List[Dict[str, str]]) -
         )
         return str(reply).strip()
     except Exception as exc:
-        logger.warning("Synthesis call failed: %s; using page snippet fallback", exc)
-        return pages[0]["text"][:400]
+        logger.warning("Synthesis call failed on smart model: %s; trying fast model fallback", exc)
+        try:
+            reply = await call(
+                "extractor",
+                [
+                    {"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+            return str(reply).strip()
+        except Exception as e2:
+            logger.warning("Synthesis fast model fallback also failed: %s; using page snippet fallback", e2)
+            return pages[0]["text"][:400]

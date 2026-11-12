@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Tuple, Union
-from app.services.pipeline import fetcher, persona, planner, synth
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from app.services.pipeline import fetcher, filter, persona, planner, synth
 from app.services.pipeline.telegram_fmt import chunks, format_reply
 from app.utils.logging import get_logger
 
@@ -15,16 +15,23 @@ async def answer_pipeline(
     history: List[Tuple[str, str]],
     memory_facts: List[str],
     include_metadata: bool = False,
+    progress: Optional[Callable[[str], None]] = None,
+    plan_data: Optional[Dict[str, Any]] = None,
 ) -> Union[List[str], Tuple[List[str], Dict[str, Any]]]:
-    """Execute the multi-stage LLM pipeline. Returns a list of formatted message chunks,
+    """Execute the multi-stage LLM pipeline with evidence filtering and progress reporting."""
+    def _notify(stage: str):
+        if progress:
+            try:
+                progress(stage)
+            except Exception:
+                pass
 
-    and optionally a metadata dict containing per-stage timings and execution details.
-    """
     logger.info("Executing multi-stage pipeline for message: %r", user_msg[:60])
     t0 = time.perf_counter()
     timings: Dict[str, float] = {
         "planner_ms": 0.0,
         "fetch_ms": 0.0,
+        "filter_ms": 0.0,
         "synth_ms": 0.0,
         "persona_ms": 0.0,
         "total_ms": 0.0,
@@ -34,13 +41,18 @@ async def answer_pipeline(
         "timings": timings,
         "queries": [],
         "pages_count": 0,
+        "kept_count": 0,
         "failed_stage": None,
     }
 
     # 1. Plan
-    t_plan_start = time.perf_counter()
-    plan_data = await planner.plan(user_msg, history)
-    timings["planner_ms"] = round((time.perf_counter() - t_plan_start) * 1000, 1)
+    _notify("planning")
+    if plan_data is None:
+        t_plan_start = time.perf_counter()
+        plan_data = await planner.plan(user_msg, history)
+        timings["planner_ms"] = round((time.perf_counter() - t_plan_start) * 1000, 1)
+    else:
+        timings["planner_ms"] = 0.0
 
     needs_search = plan_data.get("needs_search", False)
     queries = plan_data.get("queries", [])
@@ -51,6 +63,7 @@ async def answer_pipeline(
     if not needs_search or not queries:
         logger.info("Pipeline fast path (no search needed)")
         meta["path"] = "pipeline-fast"
+        _notify("writing")
         t_persona_start = time.perf_counter()
         reply = await persona.reply_direct(user_msg, history, memory_facts)
         timings["persona_ms"] = round((time.perf_counter() - t_persona_start) * 1000, 1)
@@ -61,15 +74,16 @@ async def answer_pipeline(
     # 2. Search & Fetch in parallel
     logger.info("Pipeline search path with queries: %s", queries)
     meta["path"] = "pipeline-search"
+    _notify("searching")
     t_fetch_start = time.perf_counter()
     pages = await fetcher.gather(queries)
     timings["fetch_ms"] = round((time.perf_counter() - t_fetch_start) * 1000, 1)
     meta["pages_count"] = len(pages)
-    meta["pages"] = [{"title": p.get("title", ""), "url": p.get("url", "")} for p in pages]
 
     if not pages:
         logger.info("Pipeline search yielded 0 pages; answering in character")
         meta["path"] = "pipeline-search-empty"
+        _notify("writing")
         t_persona_start = time.perf_counter()
         fallback_msg = f"{user_msg}\n(I couldn't find any relevant results online; say so in character.)"
         reply = await persona.reply_direct(fallback_msg, history, memory_facts)
@@ -78,16 +92,40 @@ async def answer_pipeline(
         res_chunks = chunks(format_reply(reply, []))
         return (res_chunks, meta) if include_metadata else res_chunks
 
-    # 3. Synthesize & Rewrite
+    # 3. Filter Evidence (Passage overlap + 2B verbatim extraction)
+    _notify("reading")
+    _notify("filtering")
+    t_filter_start = time.perf_counter()
+    kept = await filter.filter_pages(user_msg, queries, pages)
+    timings["filter_ms"] = round((time.perf_counter() - t_filter_start) * 1000, 1)
+    meta["kept_count"] = len(kept)
+    meta["pages"] = [{"url": p.get("url", "")} for p in kept]
+
+    if not kept:
+        logger.info("Evidence filtering yielded 0 relevant excerpts; taking fallback path")
+        meta["path"] = "pipeline-filtered-empty"
+        _notify("writing")
+        t_persona_start = time.perf_counter()
+        fallback_msg = f"{user_msg}\n(I found pages online but none contained relevant facts; say so in character.)"
+        reply = await persona.reply_direct(fallback_msg, history, memory_facts)
+        timings["persona_ms"] = round((time.perf_counter() - t_persona_start) * 1000, 1)
+        timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        res_chunks = chunks(format_reply(reply, []))
+        return (res_chunks, meta) if include_metadata else res_chunks
+
+    # 4. Synthesize with 9B (on filtered evidence)
+    _notify("writing")
     try:
         t_synth_start = time.perf_counter()
-        draft = await synth.synthesize(user_msg, context, pages)
+        draft = await synth.synthesize(user_msg, context, kept)
         timings["synth_ms"] = round((time.perf_counter() - t_synth_start) * 1000, 1)
     except Exception as exc:
         logger.warning("Pipeline synthesis error: %s; falling back to top snippet", exc)
         meta["failed_stage"] = "synth"
-        draft = pages[0]["text"][:400]
+        draft = kept[0]["text"][:400]
 
+    # 5. Persona Rewrite & Polish
+    _notify("polishing")
     try:
         t_persona_start = time.perf_counter()
         final = await persona.rewrite(draft, user_msg)
@@ -98,5 +136,9 @@ async def answer_pipeline(
         final = draft
 
     timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
-    res_chunks = chunks(format_reply(final, pages))
+    res_chunks = chunks(format_reply(final, kept))
     return (res_chunks, meta) if include_metadata else res_chunks
+
+
+# Alias for job runner and external callers
+answer = answer_pipeline
