@@ -10,6 +10,49 @@ from app.utils.logging import get_logger
 logger = get_logger("app.pipeline.orchestrator")
 
 
+class PipelineResult(tuple):
+    """Named-tuple compatible result returned by the multi-stage pipeline.
+
+    Supports sequence unpacking `(chunks, meta) = result` for seamless
+    backwards compatibility with existing tuple consumers, while providing
+    strongly typed property access.
+    """
+
+    def __new__(cls, chunks: List[str], metadata: Dict[str, Any]):
+        return super().__new__(cls, (chunks, metadata))
+
+    @property
+    def chunks(self) -> List[str]:
+        """List of formatted message chunks ready for transmission."""
+        return self[0]
+
+    @property
+    def metadata(self) -> Dict[str, Any]:
+        """Pipeline telemetry and stage execution metadata."""
+        return self[1]
+
+    @property
+    def text(self) -> str:
+        """Full combined response text across all chunks."""
+        return "".join(self.chunks)
+
+    @property
+    def path(self) -> str:
+        """Pipeline routing path (e.g. 'pipeline-fast', 'pipeline-search')."""
+        return str(self.metadata.get("path", "unknown"))
+
+    @property
+    def timings(self) -> Dict[str, float]:
+        """Stage execution durations in milliseconds."""
+        return self.metadata.get("timings", {})
+
+    @property
+    def sources(self) -> List[str]:
+        """List of URLs kept in the evidence bundle."""
+        pages = self.metadata.get("pages", [])
+        return [p.get("url", "") for p in pages if isinstance(p, dict) and p.get("url")]
+
+
 async def answer_pipeline(
     user_msg: str,
     history: List[Tuple[str, str]],
@@ -17,7 +60,7 @@ async def answer_pipeline(
     include_metadata: bool = False,
     progress: Optional[Callable[[str], None]] = None,
     plan_data: Optional[Dict[str, Any]] = None,
-) -> Union[List[str], Tuple[List[str], Dict[str, Any]]]:
+) -> Union[List[str], PipelineResult]:
     """Execute the multi-stage LLM pipeline with evidence filtering and progress reporting."""
     def _notify(stage: str):
         if progress:
@@ -69,7 +112,7 @@ async def answer_pipeline(
         timings["persona_ms"] = round((time.perf_counter() - t_persona_start) * 1000, 1)
         timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         res_chunks = chunks(format_reply(reply, []))
-        return (res_chunks, meta) if include_metadata else res_chunks
+        return PipelineResult(res_chunks, meta) if include_metadata else res_chunks
 
     # 2. Search & Fetch in parallel
     logger.info("Pipeline search path with queries: %s", queries)
@@ -90,7 +133,7 @@ async def answer_pipeline(
         timings["persona_ms"] = round((time.perf_counter() - t_persona_start) * 1000, 1)
         timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         res_chunks = chunks(format_reply(reply, []))
-        return (res_chunks, meta) if include_metadata else res_chunks
+        return PipelineResult(res_chunks, meta) if include_metadata else res_chunks
 
     # 3. Filter Evidence (Passage overlap + 2B verbatim extraction)
     _notify("reading")
@@ -111,7 +154,7 @@ async def answer_pipeline(
         timings["persona_ms"] = round((time.perf_counter() - t_persona_start) * 1000, 1)
         timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
         res_chunks = chunks(format_reply(reply, []))
-        return (res_chunks, meta) if include_metadata else res_chunks
+        return PipelineResult(res_chunks, meta) if include_metadata else res_chunks
 
     # 4. Synthesize with 9B (on filtered evidence)
     _notify("writing")
@@ -137,7 +180,7 @@ async def answer_pipeline(
 
     timings["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     res_chunks = chunks(format_reply(final, kept))
-    return (res_chunks, meta) if include_metadata else res_chunks
+    return PipelineResult(res_chunks, meta) if include_metadata else res_chunks
 
 
 # Alias for job runner and external callers

@@ -90,7 +90,11 @@ async def _run(
                 include_metadata=True,
                 plan_data=job.plan_data,
             )
-            if isinstance(res, tuple):
+            if hasattr(res, "chunks") and hasattr(res, "metadata"):
+                parts = res.chunks
+                job.meta = res.metadata
+                job.chunks = res.chunks
+            elif isinstance(res, tuple):
                 parts, meta = res
                 job.meta = meta
                 job.chunks = parts
