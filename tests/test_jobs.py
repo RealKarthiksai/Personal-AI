@@ -74,3 +74,44 @@ async def test_jobs_flow(monkeypatch):
     await jobs.on_message(chat_id, "cancel", [], [], send, typing)
     assert len(sent_messages) == 5
     assert "Dropped it." in sent_messages[4]
+
+
+def test_job_duration_and_completion_tracking() -> None:
+    job = jobs.Job(chat_id="test_user", question="test question")
+    assert job.duration_s >= 0.0
+    assert job.completed_at is None
+
+    time_now = job.started + 1.25
+    job.completed_at = time_now
+    assert job.duration_s == 1.25
+
+
+def test_queue_stats_and_clear_all_jobs(monkeypatch) -> None:
+    from app.config import config
+    monkeypatch.setattr(config, "pipeline_max_concurrent_jobs", 3)
+
+    jobs.clear_all_jobs()
+    stats_empty = jobs.get_queue_stats()
+    assert stats_empty["active_jobs"] == 0
+    assert stats_empty["queued_jobs"] == 0
+    assert stats_empty["concurrency_limit"] == 3
+
+    # Add dummy jobs
+    j1 = jobs.Job(chat_id="u1", question="q1", stage="searching")
+    j2 = jobs.Job(chat_id="u2", question="q2", stage="queued")
+    jobs.JOBS["u1"] = [j1]
+    jobs.JOBS["u2"] = [j2]
+
+    stats_populated = jobs.get_queue_stats()
+    assert stats_populated["active_jobs"] == 1
+    assert stats_populated["queued_jobs"] == 1
+    assert stats_populated["stages"] == {"searching": 1, "queued": 1}
+
+    # Verify semaphore reflects config limit
+    sem = jobs.get_heavy_semaphore()
+    assert sem._value == 3
+
+    # Clear all jobs
+    jobs.clear_all_jobs()
+    assert len(jobs.JOBS) == 0
+

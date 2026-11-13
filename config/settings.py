@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     max_pages: int = Field(default=6)
     page_chars: int = Field(default=6000)
     stage_timeout: int = Field(default=180)
+    pipeline_max_concurrent_jobs: int = Field(default=1)
 
     # --- Telegram Bot API ----------------------------------------------------
     telegram_bot_token: Optional[str] = Field(default=None)

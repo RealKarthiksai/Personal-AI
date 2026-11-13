@@ -10,7 +10,22 @@ from . import persona, planner
 from .orchestrator import answer
 
 log = logging.getLogger("app.pipeline.jobs")
-HEAVY = asyncio.Semaphore(1)          # one heavy pipeline at a time on this CPU
+_HEAVY_SEMAPHORE: Optional[asyncio.Semaphore] = None
+_CURRENT_CONCURRENCY: int = 1
+
+
+def get_heavy_semaphore() -> asyncio.Semaphore:
+    """Return the shared pipeline concurrency semaphore, sizing it dynamically from settings."""
+    global _HEAVY_SEMAPHORE, _CURRENT_CONCURRENCY
+    from app.config import config
+    limit = getattr(config, "pipeline_max_concurrent_jobs", 1) or 1
+    if _HEAVY_SEMAPHORE is None or _CURRENT_CONCURRENCY != limit:
+        _HEAVY_SEMAPHORE = asyncio.Semaphore(limit)
+        _CURRENT_CONCURRENCY = limit
+    return _HEAVY_SEMAPHORE
+
+
+HEAVY = get_heavy_semaphore()
 JOBS: Dict[Union[int, str], List["Job"]] = {}  # chat_id -> jobs, running or queued
 
 STATUS_RE = re.compile(r"\b(done|status|update|still|how long|ready|found|any luck|progress)\b", re.I)
@@ -50,15 +65,52 @@ class Job:
     question: str
     stage: str = "queued"
     started: float = field(default_factory=time.time)
+    completed_at: Optional[float] = None
     done: bool = False
     task: Optional[asyncio.Task] = None
     meta: Optional[Dict[str, Any]] = None
     chunks: List[str] = field(default_factory=list)
     plan_data: Optional[Dict[str, Any]] = None
 
+    @property
+    def duration_s(self) -> float:
+        end = self.completed_at or time.time()
+        return round(end - self.started, 2)
+
 
 def active(chat_id: Union[int, str]) -> Optional[Job]:
     return next((j for j in JOBS.get(chat_id, []) if not j.done), None)
+
+
+def get_queue_stats() -> Dict[str, Any]:
+    """Return active queue stats across all chat channels."""
+    from app.config import config
+    total_active = 0
+    total_queued = 0
+    by_stage: Dict[str, int] = {}
+    for chat_jobs in JOBS.values():
+        for j in chat_jobs:
+            if not j.done:
+                if j.stage == "queued":
+                    total_queued += 1
+                else:
+                    total_active += 1
+                by_stage[j.stage] = by_stage.get(j.stage, 0) + 1
+    return {
+        "active_jobs": total_active,
+        "queued_jobs": total_queued,
+        "stages": by_stage,
+        "concurrency_limit": getattr(config, "pipeline_max_concurrent_jobs", 1) or 1,
+    }
+
+
+def clear_all_jobs() -> None:
+    """Cancel and clear all jobs across all chat IDs."""
+    for chat_jobs in list(JOBS.values()):
+        for j in list(chat_jobs):
+            if j.task and not j.task.done():
+                j.task.cancel()
+    JOBS.clear()
 
 
 async def _typing_loop(job: Job, typing: Callable[[], Any]):
@@ -80,7 +132,7 @@ async def _run(
 ):
     ticker = asyncio.create_task(_typing_loop(job, typing))
     try:
-        async with HEAVY:
+        async with get_heavy_semaphore():
             job.stage = "starting"
             res = await answer(
                 job.question,
@@ -117,6 +169,7 @@ async def _run(
         await send("That fell over. Ask me again later.")
     finally:
         job.done = True
+        job.completed_at = time.time()
         ticker.cancel()
         if job.chat_id in JOBS and job in JOBS[job.chat_id]:
             JOBS[job.chat_id].remove(job)
