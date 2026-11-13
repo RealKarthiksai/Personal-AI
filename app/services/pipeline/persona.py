@@ -115,5 +115,6 @@ async def rewrite(draft: str, question: str) -> str:
                 ],
             )
             return str(reply).strip()
-        except Exception:
+        except Exception as e2:
+            logger.warning("Persona rewrite fast fallback also failed: %s; keeping draft", e2)
             return draft

@@ -481,10 +481,17 @@ class ChatService:
                         repository.mark_processing(external_message_id, "delivered")
                 return result
             except Exception as exc:
-                logger.error("Multi-stage pipeline error: %s; falling back to legacy generation", exc)
+                logger.error(
+                    "Multi-stage pipeline error (%s): %s; falling back to legacy generation",
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+                    extra={"request_id": request_id, "message_id": external_message_id},
+                )
                 result["execution_path"] = "legacy_fallback"
                 result["pipeline_fallback"] = True
-                result["pipeline_error"] = str(exc)
+                result["pipeline_error"] = f"{type(exc).__name__}: {str(exc)}"
+                result["pipeline_error_type"] = type(exc).__name__
                 reply = ""
 
         # Legacy prompt path (fallback or default when USE_PIPELINE is false)
