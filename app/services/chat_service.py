@@ -265,6 +265,7 @@ class ChatService:
 
         # Fast path: If mode is DIRECT, bypass LLM entirely (0 LLM calls, 100% deterministic)
         if tool_result.mode == ResponseMode.DIRECT:
+            result["execution_path"] = "direct_tool"
             reply = tool_result.direct or tool_result.context_text or "No data available."
             result["llm_response"] = reply
 
@@ -309,6 +310,7 @@ class ChatService:
 
         # Fast path: If mode is ACTION, send interactive confirmation card and bypass LLM entirely (0 LLM calls)
         if tool_result.mode == ResponseMode.ACTION:
+            result["execution_path"] = "direct_action"
             card_text = tool_result.action_card or tool_result.direct or tool_result.context_text or "Action required."
             result["llm_response"] = card_text
 
@@ -404,7 +406,7 @@ class ChatService:
         if config.use_pipeline and tool_result.mode in (ResponseMode.GROUNDED_TEXT, ResponseMode.PASSTHROUGH):
             try:
                 from app.memory.repository import list_memories
-                from app.services.pipeline.orchestrator import answer_pipeline
+                from app.services.pipeline.jobs import on_message
 
                 # 1. Map history roles and ensure the current message is not duplicated
                 role_map = {"inbound": "user", "outbound": "assistant"}
@@ -422,19 +424,80 @@ class ChatService:
                 except Exception as e:
                     logger.debug("Failed to list memories for pipeline: %s", e)
 
-                # 3. Call multi-stage pipeline
-                response_chunks = await answer_pipeline(
-                    user_msg=text,
+                active_sender = sender if sender is not None else self.sender
+
+                async def _send(chunk_text: str) -> Optional[str]:
+                    repository.create_message(
+                        external_message_id=None,
+                        sender_id=sender_id,
+                        direction="outbound",
+                        text=chunk_text,
+                        timestamp=None,
+                        status="pending",
+                        user_id=user_id,
+                        channel=channel,
+                    )
+                    if active_sender is not None:
+                        return await active_sender.send_text(to=sender_id, text=chunk_text)
+                    return None
+
+                async def _typing() -> bool:
+                    if active_sender is not None and hasattr(active_sender, "send_chat_action"):
+                        return await active_sender.send_chat_action(to=sender_id, action="typing")
+                    return False
+
+                force_search = (tool_result.mode == ResponseMode.GROUNDED_TEXT)
+                initial_queries = [tool_result.input_value] if (force_search and tool_result.input_value) else None
+
+                def _mark_delivered():
+                    repository.mark_processing(external_message_id, "delivered")
+
+                # 3. Non-blocking job manager entry point
+                mid = await on_message(
+                    chat_id=sender_id,
+                    text=text,
                     history=history_pairs,
-                    memory_facts=facts_list,
+                    facts=facts_list,
+                    send=_send,
+                    typing=_typing,
+                    force_search=force_search,
+                    initial_queries=initial_queries,
+                    on_complete=_mark_delivered,
                 )
-                reply = "\n\n".join(response_chunks).strip()
+                from app.services.pipeline import jobs
+                result["execution_path"] = "pipeline_jobs"
+                result["message_id"] = mid
+                result["sent"] = bool(mid)
+                job = jobs.active(sender_id)
+                if job:
+                    # Async background job dispatched; mark processing until answer chunks are sent
+                    result["llm_response"] = "dispatched"
+                    if mid:
+                        repository.mark_processing(external_message_id, "processing")
+                else:
+                    # Immediate reply (casual chat, status check, or cancel)
+                    result["llm_response"] = "completed"
+                    if mid:
+                        repository.mark_processing(external_message_id, "delivered")
+                return result
             except Exception as exc:
-                logger.error("Multi-stage pipeline error: %s; falling back to legacy generation", exc)
+                logger.error(
+                    "Multi-stage pipeline error (%s): %s; falling back to legacy generation",
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+                    extra={"request_id": request_id, "message_id": external_message_id},
+                )
+                result["execution_path"] = "legacy_fallback"
+                result["pipeline_fallback"] = True
+                result["pipeline_error"] = f"{type(exc).__name__}: {str(exc)}"
+                result["pipeline_error_type"] = type(exc).__name__
                 reply = ""
 
         # Legacy prompt path (fallback or default when USE_PIPELINE is false)
         if not reply:
+            if "execution_path" not in result:
+                result["execution_path"] = "legacy"
             # Retrieve and inject user memory if in GROUNDED_TEXT or PASSTHROUGH mode
             memory_context = ""
             if tool_result.mode in (ResponseMode.GROUNDED_TEXT, ResponseMode.PASSTHROUGH):
@@ -488,6 +551,8 @@ class ChatService:
                 reply = validate_grounded_text(reply, tool_result.allowed_urls)
 
         result["llm_response"] = reply
+        from app.services.pipeline.telegram_fmt import chunks
+        response_chunks = chunks(reply)
 
         # 6. Store generated response (outbound).
         repository.create_message(

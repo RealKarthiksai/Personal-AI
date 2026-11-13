@@ -85,3 +85,34 @@ async def test_persona_rewrite_keeps_citations() -> None:
     assert "[1]" in rewritten
     assert "Friday" in rewritten
     mock_call.assert_called_once()
+
+
+def test_pipeline_result_properties_and_unpacking() -> None:
+    from app.services.pipeline.orchestrator import PipelineResult
+
+    raw_chunks = ["Part 1 ", "Part 2"]
+    raw_meta = {
+        "path": "pipeline-search",
+        "timings": {"total_ms": 123.4},
+        "pages": [{"url": "https://example.com/one"}, {"url": "https://example.com/two"}],
+    }
+
+    res = PipelineResult(raw_chunks, raw_meta)
+
+    # 1. Tuple unpacking compatibility
+    unpacked_chunks, unpacked_meta = res
+    assert unpacked_chunks == raw_chunks
+    assert unpacked_meta == raw_meta
+    assert isinstance(res, tuple)
+    assert len(res) == 2
+    assert res[0] == raw_chunks
+    assert res[1] == raw_meta
+
+    # 2. Typed property access
+    assert res.chunks == raw_chunks
+    assert res.metadata == raw_meta
+    assert res.text == "Part 1 Part 2"
+    assert res.path == "pipeline-search"
+    assert res.timings == {"total_ms": 123.4}
+    assert res.sources == ["https://example.com/one", "https://example.com/two"]
+

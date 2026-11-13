@@ -219,3 +219,47 @@ def test_history_compaction_and_token_budget(monkeypatch, tmp_path) -> None:
         cfg_module.config.database_url = orig_db
         cfg_module.config.telegram_allowed_user_ids = orig_allowed_raw
         cfg_module.config.allowed_telegram_user_ids = orig_allowed
+
+
+def test_pipeline_fallback_error_telemetry(tmp_path: Any) -> None:
+    import app.config as cfg_module
+    from app.database import database
+    from unittest.mock import patch
+
+    db_file = tmp_path / "test_pipe_telemetry.db"
+    orig_db = cfg_module.config.database_url
+    orig_pipe = cfg_module.config.use_pipeline
+    orig_allowed = cfg_module.config.telegram_allowed_user_ids
+    cfg_module.config.database_url = f"sqlite:///{db_file}"
+    cfg_module.config.use_pipeline = True
+    cfg_module.config.telegram_allowed_user_ids = "123456789"
+    database.init_db(force=True)
+
+    try:
+        class _MockLLM:
+            async def generate(self, *args, **kwargs):
+                return "Legacy fallback answer"
+
+        service = ChatService(sender=_FakeSender())
+        service.llm = _MockLLM()
+
+        with patch("app.services.pipeline.jobs.on_message", side_effect=RuntimeError("Simulated LLM network timeout")):
+            res = _asyncio_run(
+                service.process_inbound(
+                    sender_id="123456789",
+                    external_message_id="tg:err_1",
+                    text="what is the capital of Italy?",
+                    request_id="req_err",
+                )
+            )
+
+        assert res["sent"] is True
+        assert res["execution_path"] == "legacy_fallback"
+        assert res["pipeline_fallback"] is True
+        assert res["pipeline_error_type"] == "RuntimeError"
+        assert "Simulated LLM network timeout" in res["pipeline_error"]
+        assert res["llm_response"] == "Legacy fallback answer"
+    finally:
+        cfg_module.config.database_url = orig_db
+        cfg_module.config.use_pipeline = orig_pipe
+        cfg_module.config.telegram_allowed_user_ids = orig_allowed

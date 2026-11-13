@@ -4,11 +4,14 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
+import threading
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
+from bs4 import BeautifulSoup
 import httpx
 
 from app.config import config
+from app.database import repository
 from app.services.extractor_service import ExtractorService
 from app.services.search_service import SearchService
 from app.utils.logging import get_logger
@@ -17,6 +20,7 @@ logger = get_logger("app.pipeline.fetcher")
 
 _search_service = SearchService()
 _extractor_service = ExtractorService(max_content_chars=config.page_chars)
+_trafilatura_lock = threading.Lock()
 
 
 def is_safe_url(url: str) -> bool:
@@ -51,10 +55,11 @@ async def search_urls(query: str) -> List[Dict[str, str]]:
 
 
 def _extract_with_trafilatura(html_text: str) -> str:
-    """Synchronous CPU extraction via trafilatura."""
+    """Synchronous CPU extraction via trafilatura protected by lock for libxml2 thread safety."""
     try:
-        import trafilatura
-        return trafilatura.extract(html_text) or ""
+        with _trafilatura_lock:
+            import trafilatura
+            return trafilatura.extract(html_text) or ""
     except Exception:
         return ""
 
@@ -68,22 +73,28 @@ async def _fetch(client: httpx.AsyncClient, item: Dict[str, str], sem: asyncio.S
 
     async with sem:
         text = ""
+        # 1. Check sqlite page cache first
         try:
-            # 1. Fast HTTP fetch with trafilatura in worker thread
-            resp = await client.get(url, timeout=9.0, follow_redirects=True)
-            if resp.status_code == 200:
-                text = await asyncio.to_thread(_extract_with_trafilatura, resp.text)
-        except Exception as e:
-            logger.debug("Fast HTTP fetch failed for %s: %s; falling back to ExtractorService", url, e)
+            url_hash = _extractor_service._hash_url(url)
+            cached = repository.get_cached_page(url_hash=url_hash, max_age_seconds=86400)
+            if cached and cached.get("markdown_content"):
+                text = cached["markdown_content"]
+        except Exception:
+            pass
 
-        # 2. Fall back to ExtractorService (supports cache & Crawl4AI)
+        # 2. Fast HTTP fetch with trafilatura in worker thread (plus soup fallback)
         if not text:
             try:
-                extracted = await _extractor_service.extract(url, use_cache=True)
-                if extracted and extracted.success and extracted.markdown:
-                    text = extracted.markdown
+                resp = await client.get(url, timeout=9.0, follow_redirects=True)
+                if resp.status_code == 200:
+                    text = await asyncio.to_thread(_extract_with_trafilatura, resp.text)
+                    if not text:
+                        soup = BeautifulSoup(resp.text, "html.parser")
+                        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
+                            tag.decompose()
+                        text = soup.get_text(separator=" ", strip=True)
             except Exception as e:
-                logger.debug("ExtractorService extraction failed for %s: %s", url, e)
+                logger.debug("Fast HTTP fetch failed for %s: %s", url, e)
 
         # 3. Last fallback: search snippet
         if not text:

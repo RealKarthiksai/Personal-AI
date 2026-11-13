@@ -36,6 +36,7 @@ class Config:
         self.max_pages = s.max_pages
         self.page_chars = s.page_chars
         self.stage_timeout = s.stage_timeout
+        self.pipeline_max_concurrent_jobs = getattr(s, "pipeline_max_concurrent_jobs", 1)
 
         # Telegram Bot API (active channel)
         self.telegram_bot_token = s.telegram_bot_token
