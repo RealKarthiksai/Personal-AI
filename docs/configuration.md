@@ -1,41 +1,62 @@
-# Configuration — Local WhatsApp AI Chatbot
+# Configuration — Karna (Personal AI Chatbot)
 
-All configuration is via environment variables, conventionally stored in `.env`
+All configuration is managed via environment variables, conventionally stored in `.env`
 (templated by `.env.example`). Secrets are never hardcoded and never logged.
 
-## Environment variables
+## Core Environment Variables
 
+### Application & Database
 | Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `APP_ENV` | No | `development` | Deployment environment |
+|---|---|---|---|
+| `APP_ENV` | No | `development` | Deployment environment (`development` or `production`) |
 | `HOST` | No | `127.0.0.1` | Bind host |
 | `PORT` | No | `8000` | Bind port |
-| `LLM_BASE_URL` | Yes* | (empty) | llama.cpp OpenAI-compatible base URL |
-| `LLM_MODEL` | No | (empty) | Discovered at runtime if unset |
-| `LLM_API_KEY` | No | (empty) | API key for llama.cpp (if any) |
-| `WHATSAPP_ACCESS_TOKEN` | Yes* | (empty) | Meta WhatsApp access token |
-| `WHATSAPP_PHONE_NUMBER_ID` | Yes* | (empty) | Meta Phone Number ID |
-| `WHATSAPP_APP_SECRET` | Yes* | (empty) | Meta App Secret (signature validation) |
-| `WHATSAPP_VERIFY_TOKEN` | Yes* | (empty) | Webhook verification token |
-| `WHATSAPP_ALLOWED_SENDER_IDS` | No | (empty) | Comma-separated E.164 allowed senders |
-| `WHATSAPP_GRAPH_API_VERSION` | No | `v22.0` | Meta Graph API version |
 | `DATABASE_URL` | No | `sqlite:///./data/chatbot.db` | SQLite database path |
-| `MAX_HISTORY_MESSAGES` | No | `12` | Conversation history window |
-| `REQUEST_TIMEOUT_SECONDS` | No | `60` | HTTP request timeout |
+| `MAX_HISTORY_MESSAGES` | No | `12` | Number of previous conversation turns preserved |
+| `REQUEST_TIMEOUT_SECONDS` | No | `60` | Network request timeout for external calls |
+| `SESSION_TIMEOUT_MINUTES` | No | `30` | Conversation session idle expiry in minutes |
 
-\* Required for WhatsApp/LLM functionality; app starts without them but those
-features will not work.
+### Telegram Bot API
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | Yes* | (empty) | Bot API token obtained from `@BotFather` |
+| `TELEGRAM_ALLOWED_USER_IDS` | No | (empty) | Comma-separated allowed Telegram user IDs |
 
-## How values are loaded
+### Multi-Stage Local LLM Pipeline
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `USE_PIPELINE` | No | `false` | Enable multi-stage pipeline routing (set `true` in local `.env`) |
+| `LLM_FAST_URL` | No | `http://127.0.0.1:8081` | Base URL for Fast 2B/4B model (planning & quote filtering) |
+| `LLM_SMART_URL` | No | `http://127.0.0.1:8082` | Base URL for Smart 9B model (factual synthesis & persona) |
+| `MAX_PAGES` | No | `6` | Maximum web pages scraped during parallel gather |
+| `PAGE_CHARS` | No | `6000` | Maximum characters processed per evidence bundle |
+| `STAGE_TIMEOUT` | No | `180` | Stage execution timeout in seconds |
+| `PIPELINE_MAX_CONCURRENT_JOBS` | No | `1` | Maximum parallel background research tasks |
 
-`config/settings.py` (pydantic-settings) reads `.env` then environment
-variables. `app/config.py` exposes a typed `Config` wrapper. Secret fields are
-masked in `__repr__`/`__str__` so they never appear in logs.
+### Legacy Local LLM (Single Model)
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `LLM_BASE_URL` | No | (empty) | llama.cpp OpenAI-compatible base URL (used when `USE_PIPELINE=false`) |
+| `LLM_MODEL` | No | (empty) | Discovered at runtime via `/v1/models` if unset |
+| `LLM_API_KEY` | No | (empty) | Optional API key |
 
-## Security notes
+### Web Search & Information Retrieval
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SEARXNG_BASE_URL` | No | `http://127.0.0.1:8080` | SearXNG instance URL for web research |
+| `SEARCH_CACHE_TTL_SECONDS` | No | `3600` | SQLite cache expiration for search results |
+| `CRAWLER_TIMEOUT_SECONDS` | No | `15` | Timeout for individual webpage fetching |
 
-- `.env` is excluded from Git (see `.gitignore`).
-- Webhook signature validation uses `WHATSAPP_APP_SECRET` against the raw body
-  (`X-Hub-Signature-256`).
-- Only senders in `WHATSAPP_ALLOWED_SENDER_IDS` receive responses.
-- The access token is redacted in all log output (`redact()` helper).
+---
+
+## How Values Are Loaded
+
+1. `config/settings.py` (`pydantic-settings`) reads `.env` then environment variables.
+2. `app/config.py` exposes a typed `Config` wrapper across the codebase.
+3. Secret fields (`TELEGRAM_BOT_TOKEN`, `LLM_API_KEY`, etc.) are masked in `__repr__` and logs.
+
+## Security Notes
+
+- `.env` is strictly excluded from version control in `.gitignore`.
+- Only senders in `TELEGRAM_ALLOWED_USER_IDS` are processed; unauthorized messages are dropped.
+- SSRF protections in `fetcher.py` prevent fetching localhost, private loopback, or LAN IPs.
